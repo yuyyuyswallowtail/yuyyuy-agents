@@ -1,0 +1,14 @@
+[Unit]
+Description=llama.cpp deepseek (:9999)
+
+[Service]
+Type=simple
+ExecCondition=/bin/sh -c '! ss -ltnH "sport = :9999" | grep -q .'
+ExecStart=%h/LLM/scripts/run-deepseek-9999.sh
+Restart=always
+RestartSec=5
+StandardOutput=append:%h/LLM/logs/deepseek.log
+StandardError=append:%h/LLM/logs/deepseek.log
+
+[Install]
+WantedBy=default.target
