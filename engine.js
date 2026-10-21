@@ -1,16 +1,17 @@
-/* ===== yuyyuy agent engine v2 (embedded in the n8n Config, Router, Absorb and Done Code nodes) ===== */
+/* ===== yuyyuy agent engine v2.1 (embedded in the n8n Config, Router, Absorb and Done Code nodes) ===== */
 const LIM = { scope: 5200, snap: 3000, skills: 7500, memo: 1800, md: 6500, file: 2500, files: 7000, checks: 2200, brief: 1500, reads: 4000 };
-const TOK = { docs: 6000, fix: 2500, code: 3500, qa: 1800, brief: 300, record: 160 };
+const TOK = { docs: 6000, fix: 4000, code: 3500, qa: 1800, brief: 300, record: 160 };
 const LLM_ACTIONS = ['deepseek', 'qwen', 'ministral'];
 const DEFAULT_CHECK = [['Files Per Layer', []], ['Contracts', []], ['Edge Cases', []], ['Test Plan', []]];
-const BASE_OWNED = ['routes/web.php', 'app/Providers/RepositoryServiceProvider.php', 'database/seeders/DatabaseSeeder.php', 'bootstrap/providers.php'];
+const BASE_OWNED = ['routes/web.php', 'app/Providers/RepositoryServiceProvider.php', 'database/seeders/DatabaseSeeder.php', 'bootstrap/providers.php', 'bootstrap/app.php'];
+const BAD_PATHS = /^app\/(Exceptions\/Handler|Http\/Kernel)\.php$/;
 const LAYER_RE = {
-  backend: /^(app\/(Models|Enums|DTOs|Repositories|Services|Validators|Policies|Providers|Support|Exceptions|Jobs|Http\/(Controllers|Requests|Middleware|Resources))\/|routes\/|database\/(migrations|factories|seeders)\/|config\/|bootstrap\/providers\.php$|tests\/Unit\/|docs\/|README\.md$|\.env\.example$)/,
+  backend: /^(app\/(Models|Enums|DTOs|Repositories|Services|Validators|Policies|Providers|Support|Exceptions|Jobs|Http\/(Controllers|Requests|Middleware|Resources))\/|routes\/|database\/(migrations|factories|seeders)\/|config\/|bootstrap\/(providers|app)\.php$|tests\/Unit\/|docs\/|README\.md$|\.env\.example$)/,
   frontend: /^(resources\/|app\/Livewire\/|app\/View\/|routes\/features\/|public\/|tests\/Feature\/(Livewire|Public)\/)/,
   qa: /^(tests\/|docs\/|phpunit\.xml$|pint\.json$)/,
 };
 const LAYER_HELP = {
-  backend: 'app/{Models,Enums,DTOs,Repositories,Services,Validators,Policies,Providers,Support,Exceptions,Jobs}, app/Http/{Controllers,Requests,Middleware,Resources}, routes/, database/{migrations,factories,seeders}, config/, bootstrap/providers.php, tests/Unit/, docs/, README.md, .env.example',
+  backend: 'app/{Models,Enums,DTOs,Repositories,Services,Validators,Policies,Providers,Support,Exceptions,Jobs}, app/Http/{Controllers,Requests,Middleware,Resources}, routes/, database/{migrations,factories,seeders}, config/, bootstrap/{providers,app}.php, tests/Unit/, docs/, README.md, .env.example (NOT app/Exceptions/Handler.php or app/Http/Kernel.php: they do not exist in Laravel 11+)',
   frontend: 'resources/, app/Livewire/, app/View/, routes/features/, public/, tests/Feature/{Livewire,Public}/',
   qa: 'tests/, docs/, phpunit.xml, pint.json',
 };
@@ -47,8 +48,9 @@ function ctxSections(text) {
 function pathOk(f, root, agent, sliceId) {
   if (typeof f !== 'string' || !f.startsWith(root + '/') || f.includes('..') || !/^[A-Za-z0-9._\/-]+$/.test(f)) return false;
   const rel = f.slice(root.length + 1);
+  if (BAD_PATHS.test(rel)) return false;
   if (LAYER_RE[agent] && !LAYER_RE[agent].test(rel)) return false;
-  if (BASE_OWNED.includes(rel) && !String(sliceId).startsWith('00-')) return false;
+  if (BASE_OWNED.includes(rel) && !String(sliceId).startsWith('00')) return false;
   return true;
 }
 function readOk(f, root) {
@@ -62,7 +64,9 @@ function validateTasks(tasks, root, agent, sliceId) {
   tasks.slice(0, 6).forEach((t, i) => {
     if (!t || typeof t !== 'object') return;
     const files = (Array.isArray(t.files) ? t.files : []).filter((f) => pathOk(f, root, agent, sliceId)).slice(0, 3);
-    const reads = (Array.isArray(t.reads) ? t.reads : []).filter((f) => readOk(f, root)).slice(0, 3);
+    let reads = (Array.isArray(t.reads) ? t.reads : []).filter((f) => readOk(f, root)).slice(0, 3);
+    files.forEach((f) => { if (BASE_OWNED.includes(f.slice(root.length + 1)) && !reads.includes(f)) reads.unshift(f); });
+    reads = reads.slice(0, 3);
     const checks = (Array.isArray(t.checks) ? t.checks : []).filter((c) => typeof c === 'string').slice(0, 6);
     if (!t.instruction || !files.length) return;
     out.push({ id: String(t.id || 't' + (i + 1)).replace(/[^A-Za-z0-9._-]/g, '-'), title: String(t.title || t.id || 'task'), files, reads, instruction: String(t.instruction), checks });
@@ -209,7 +213,7 @@ function route(S) {
         const sl = slice(S); const plan = S.plans[sl.id]; const t = S.task;
         S.action = 'qwen';
         S.req = chat(`${S.ctx.CODER}\n\nREPO ROOT (absolute): ${S.cfg.root}\n\nSKILLS (excerpts, absolute paths):\n${clip(S.ctx.SKILLS, LIM.skills)}`,
-          `TASK ${t.id} of feature ${sl.id}: ${t.title}\nFiles to write (absolute, write ONLY these):\n${t.files.map((f) => '- ' + f).join('\n')}\n\nINSTRUCTION:\n${t.instruction}\n\n${S.readctx ? `EXISTING FILES (read-only context, do not rewrite):\n${clip(S.readctx, LIM.reads)}\n\n` : ''}FEATURE BRIEF FROM PLANNER:\n${clip(plan.coder, LIM.brief)}\n\nMEMORY BRIEF:\n${S.memctx}\n${S.attempt > 0 ? `\nREVIEW FEEDBACK (attempt ${S.attempt}, fix all points):\n${clip(S.feedback, 1800)}\n` : ''}\nReply with FILE/END blocks, REPORT, MEMORY.`, TOK.code, 0.3);
+          `TASK ${t.id} of feature ${sl.id}: ${t.title}\nFiles to write (absolute, write ONLY these):\n${t.files.map((f) => '- ' + f).join('\n')}\n\nINSTRUCTION:\n${t.instruction}\n\n${S.readctx ? `EXISTING FILES (read-only context; if one is also in the write list, output it COMPLETE and keep all existing content):\n${clip(S.readctx, LIM.reads)}\n\n` : ''}FEATURE BRIEF FROM PLANNER:\n${clip(plan.coder, LIM.brief)}\n\nMEMORY BRIEF:\n${S.memctx}\n${S.attempt > 0 ? `\nREVIEW FEEDBACK (attempt ${S.attempt}, fix all points):\n${clip(S.feedback, 1800)}\n` : ''}\nReply with FILE/END blocks, REPORT, MEMORY.`, TOK.code, 0.3);
         return S;
       }
 
@@ -268,6 +272,15 @@ function absorb(S, raw) {
     text = (ch && ch.message && ch.message.content) || '';
     S.cut = !!(ch && ch.finish_reason === 'length');
     if (raw && raw.error) err = JSON.stringify(raw.error).slice(0, 300);
+    S.maxPrompt = Math.max(S.maxPrompt || 0, S.req ? JSON.stringify(S.req.messages).length : 0);
+    if (err) {
+      S.llmErrs = (S.llmErrs || 0) + 1;
+      S.lastLlmErr = `${S.action} @ ${S.step}: ${err}`;
+      S.warn.push(`${S.step}: LLM error ${err.slice(0, 160)}`);
+    } else {
+      S.llmErrs = 0;
+    }
+    if (S.llmErrs >= 3) { S.abort = 'LLM unreachable or rejecting requests: ' + S.lastLlmErr; S.step = 'done'; return S; }
   } else {
     text = (raw && raw.stdout) || '';
     const rc = raw ? (raw.code !== undefined ? raw.code : raw.exitCode) : undefined;
@@ -412,11 +425,11 @@ function absorb(S, raw) {
 }
 
 function initialState(cfg) {
-  return { cfg, step: 'load_ctx', ai: 0, iter: 0, retry: 0, warn: [], stats: { pass: [], fail: [], docsIncomplete: [], docsFailed: [], agents: [], resumed: [], skipped: [], shipped: [], gitFailed: [] } };
+  return { cfg, step: 'load_ctx', ai: 0, iter: 0, retry: 0, llmErrs: 0, warn: [], stats: { pass: [], fail: [], docsIncomplete: [], docsFailed: [], agents: [], resumed: [], skipped: [], shipped: [], gitFailed: [] } };
 }
 
 function summary(S) {
-  return { ok: !S.abort && !S.stats.fail.length, abort: S.abort || null, agentsDone: S.stats.agents, tasksPassed: S.stats.pass.length, tasksFailed: S.stats.fail, docsIncomplete: S.stats.docsIncomplete, docsFailed: S.stats.docsFailed, resumed: S.stats.resumed, skippedFeatures: S.stats.skipped, shipped: S.stats.shipped, gitFailed: S.stats.gitFailed, warnings: S.warn.slice(-15), iterations: S.iter };
+  return { ok: !S.abort && !S.stats.fail.length, abort: S.abort || null, lastLlmError: S.lastLlmErr || null, maxPromptChars: S.maxPrompt || 0, agentsDone: S.stats.agents, tasksPassed: S.stats.pass.length, tasksFailed: S.stats.fail, docsIncomplete: S.stats.docsIncomplete, docsFailed: S.stats.docsFailed, resumed: S.stats.resumed, skippedFeatures: S.stats.skipped, shipped: S.stats.shipped, gitFailed: S.stats.gitFailed, warnings: S.warn.slice(-15), iterations: S.iter };
 }
 
 if (typeof module !== 'undefined') module.exports = { route, absorb, initialState, summary, sections, coverage, validateTasks, ctxSections };
