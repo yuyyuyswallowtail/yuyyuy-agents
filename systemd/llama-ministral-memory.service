@@ -1,5 +1,5 @@
 [Unit]
-Description=llama.cpp ministral-memory (:9997)
+Description=llama.cpp ministral-memory (:9997), always on
 
 [Service]
 Type=simple

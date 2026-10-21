@@ -1,6 +1,6 @@
 [Unit]
-Description=Start llama.cpp servers that are down
+Description=Keep the memory model and the model proxy running
 
 [Service]
 Type=oneshot
-ExecStart=-/usr/bin/systemctl --user start llama-deepseek.service llama-qwen-coder.service llama-ministral-memory.service
+ExecStart=-/usr/bin/systemctl --user start llama-ministral-memory.service llama-proxy.service
