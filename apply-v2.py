@@ -52,6 +52,9 @@ if "Branch Exists?" not in nodes:
     ex = nodes["Exec"]
     okn = nodes.get("OK?")
     x, y = cr["position"]
+    # credential SSH: ambil dari node SSH mana pun yang punya
+    donors = [n for n in wf["nodes"] if n.get("type") == ex["type"] and n.get("credentials")]
+    cred = copy.deepcopy(donors[0]["credentials"]) if donors else None
     check = {
         "parameters": {
             "authentication": "privateKey",
@@ -65,9 +68,12 @@ if "Branch Exists?" not in nodes:
         "type": ex["type"],
         "typeVersion": ex["typeVersion"],
         "position": [x, y + 220],
-        "credentials": copy.deepcopy(ex["credentials"]),
         "onError": "continueRegularOutput",
     }
+    if cred:
+        check["credentials"] = cred
+    else:
+        print("PERINGATAN: tidak ada credential SSH di export; pilih credential manual di node Check Branch")
     gate = {
         "parameters": {
             "conditions": {
