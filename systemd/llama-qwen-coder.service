@@ -1,14 +1,10 @@
 [Unit]
-Description=llama.cpp qwen-coder (:9998)
+Description=llama.cpp qwen-coder (:9998), started on demand by llama-proxy
 
 [Service]
 Type=simple
 ExecCondition=/bin/sh -c '! ss -ltnH "sport = :9998" | grep -q .'
 ExecStart=%h/LLM/scripts/run-qwen-coder-9998.sh
-Restart=always
-RestartSec=5
+Restart=no
 StandardOutput=append:%h/LLM/logs/qwen-coder.log
 StandardError=append:%h/LLM/logs/qwen-coder.log
-
-[Install]
-WantedBy=default.target
