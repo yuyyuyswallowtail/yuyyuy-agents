@@ -1,0 +1,20 @@
+[
+ {"id":"10-design-tokens","title":"Design tokens and layouts","brief":"Tailwind theme from the design tokens, Inter + Source Serif 4, CSS variables, admin and public base layouts."},
+ {"id":"10A-ui-components","title":"Shared UI components","brief":"Blade/Flux components: button, input, status badge (icon + text), table, pagination, empty/loading/error state, confirm dialog, toast."},
+ {"id":"11-auth-screens","title":"Auth screens","brief":"Login, register, forgot email, forgot password in the dark split layout (Leonardo style)."},
+ {"id":"11A-otp-reset-screens","title":"OTP and reset screens","brief":"OTP verification, reset password with live rules checklist, notices, throttle and error states."},
+ {"id":"12-admin-shell","title":"Admin shell","brief":"Sidebar and mobile nav from MenuRegistry filtered by permission, breadcrumbs, profile page."},
+ {"id":"12A-error-pages","title":"Error pages","brief":"Forbidden, unauthorized, not-found, server-error pages and Livewire error states."},
+ {"id":"13-users-roles-ui","title":"Users and roles UI","brief":"Users table with filters and status, roles with permission toggles (Teachable style), role request approvals."},
+ {"id":"13A-articles-ui","title":"Articles UI","brief":"Article list with status tabs and bulk bar, editor with details panel, workflow actions."},
+ {"id":"13B-comments-ui","title":"Comments UI","brief":"Comment moderation table."},
+ {"id":"13C-products-ui","title":"Products UI","brief":"Product form (Shopify style) and categories."},
+ {"id":"13D-contacts-ui","title":"Contacts UI","brief":"Contacts inbox with statuses."},
+ {"id":"14-public-home","title":"Public layout and Home","brief":"Public layout, footer, Home with CMS-driven sections."},
+ {"id":"14A-public-articles","title":"Public articles","brief":"Articles list and detail with sanitized Markdown and nested comments."},
+ {"id":"14B-public-products","title":"Public products","brief":"Products list and book detail (Fable style)."},
+ {"id":"14C-public-about-contact","title":"About and Contact","brief":"About (Zendesk style), contact form with success state, SEO title and meta."},
+ {"id":"15-dashboard","title":"Dashboard","brief":"Role-adaptive dashboard widgets (pending approvals and similar)."},
+ {"id":"15A-analytics-ui","title":"Analytics UI","brief":"Analytics page with date presets and line charts (Fingerprint style)."},
+ {"id":"15B-logs-settings-ui","title":"Logs and settings UI","brief":"Audit log table (Cake style), error monitor, system information, settings with menu names."}
+]

@@ -1,0 +1,10 @@
+[
+ {"id":"20-unit-core","title":"Unit tests: base layer","brief":"Pest unit tests for repositories, DTOs, query kit, enums, exception format."},
+ {"id":"20A-unit-auth-rbac","title":"Unit tests: auth and RBAC","brief":"Unit tests for auth services, OTP, authorization service, user status guard."},
+ {"id":"20B-unit-content","title":"Unit tests: content","brief":"Unit tests for articles, slug generator, comments, products, contacts, analytics, settings services."},
+ {"id":"21-feature-auth","title":"Feature tests: auth","brief":"Feature tests: register, login, logout, OTP reset, blocked users."},
+ {"id":"21A-feature-rbac","title":"Feature tests: RBAC","brief":"Feature tests: multi-role user, permission denial per role, role assignment, user status change."},
+ {"id":"21B-feature-content","title":"Feature tests: content","brief":"Feature tests: article workflow and ownership, nested comments, products CRUD authorization, query filtering, search, sort, pagination."},
+ {"id":"22-lint-static","title":"Style and static checks","brief":"Run pint, route:list, migrate:status, composer validate; fix style issues."},
+ {"id":"23-security-review","title":"Security review","brief":"Review authorization on every route, uploads, rate limits, secret exposure, soft-delete leakage; write docs/security-findings.md."}
+]

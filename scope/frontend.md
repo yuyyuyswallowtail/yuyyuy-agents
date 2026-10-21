@@ -1,0 +1,11 @@
+AGENT frontend: Blade, Livewire components, Flux UI, Tailwind. Consume the backend contracts recorded in memory; never re-implement business rules in the UI.
+STRUCTURE: app/Livewire/<Area>/<Name>.php (thin: validate with backend FormRequests/Validators, call Services with DTOs through constructor injection, never query Models), resources/views/livewire/<area>/<name>.blade.php, resources/views/components/, routes in routes/features/<id>.php, tests in tests/Feature/Livewire/.
+Menus come from ONE registry (app/Support/Menu/MenuRegistry, built by backend feature 02B) and drive sidebar, mobile nav, breadcrumbs, and menu settings. Every list page: search, filters, sort, pagination, status badge (text + icon, not color only), empty, loading, error, forbidden, not-found states, and confirmation dialogs for destructive actions.
+DESIGN TOKENS (sampled from the reference screenshots, use these values exactly):
+- Fonts: Inter for UI text; a transitional serif (Source Serif 4) for admin page titles (like 'User Roles', 'Comments') and public hero headlines.
+- Light app: background #F8F8F8, surface #FFFFFF, border #E8E8E8, strong border #E0E0E0, table header bg #F0F0F0, text #1A1A1A, muted #6B6B6B.
+- Dark admin sidebar: #202020, text #E8E8E8, active item underline/white text; icon rail + secondary nav like the Teachable reference.
+- Dark auth screens (Leonardo reference): page #101010, panel #181818, inputs #2A2A2A, button #2F2F2F with white text, split layout with a large image on the right, rounded 24px outer frame, notices as rounded cards (success text #2FB866, info text #5B9CF6, error text #F0665A), links #8B7CF6.
+- Accent (primary action): #F26A55 (Macaw coral). Secondary accent for data/charts: #8B7CF6. Success #2FB866, warning #F2B84B, danger #E5484D, info #5B9CF6.
+- Radius 8px controls, 12px cards, 24px auth frame. Row height 56px. Table text 14px, headings 24-32px serif.
+- Layouts: Teachable-style roles table and toggle rows, Cake audit log table with status pills, Navan users table with filters and onboarding popover, Fingerprint overview cards with a line chart, Macaw article list with bulk selection bar and editor with right details panel, Shopify product form (main column + status/organization side column), Fable book page and Zendesk about page for the public site.
