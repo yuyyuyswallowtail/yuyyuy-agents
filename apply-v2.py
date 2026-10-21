@@ -46,6 +46,17 @@ for name in ("DeepSeek Planner", "Qwen Coder", "Ministral Memory"):
     if name in nodes:
         nodes[name]["parameters"].setdefault("options", {})["timeout"] = 5400000
 
+# Result tidak boleh membaca node setup yang bisa dilewati (Create GitHub Repo, dst)
+res = nodes.get("Result")
+if res and res.get("type") == "n8n-nodes-base.set":
+    p = res["parameters"]
+    p["assignments"] = {"assignments": [
+        {"id": str(uuid.uuid4()), "name": "project", "value": "={{ $('Sanitize').first().json.name }}", "type": "string"},
+        {"id": str(uuid.uuid4()), "name": "repo_url", "value": "={{ 'https://github.com/" + OWNER + "/' + $('Sanitize').first().json.name }}", "type": "string"},
+        {"id": str(uuid.uuid4()), "name": "branch", "value": BRANCH, "type": "string"},
+    ]}
+    p["includeOtherFields"] = True
+
 C = wf["connections"]
 if "Branch Exists?" not in nodes:
     cr = nodes["Create GitHub Repo"]
