@@ -1,0 +1,6 @@
+[Unit]
+Description=Start llama.cpp servers that are down
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/bin/systemctl --user start llama-deepseek.service llama-qwen-coder.service llama-ministral-memory.service

@@ -1,0 +1,14 @@
+[Unit]
+Description=llama.cpp ministral-memory (:9997)
+
+[Service]
+Type=simple
+ExecCondition=/bin/sh -c '! ss -ltnH "sport = :9997" | grep -q .'
+ExecStart=%h/LLM/scripts/run-ministral-memory-9997.sh
+Restart=always
+RestartSec=5
+StandardOutput=append:%h/LLM/logs/ministral-memory.log
+StandardError=append:%h/LLM/logs/ministral-memory.log
+
+[Install]
+WantedBy=default.target
