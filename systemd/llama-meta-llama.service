@@ -1,0 +1,10 @@
+[Unit]
+Description=llama.cpp meta-llama (:9996), started on demand by llama-proxy
+
+[Service]
+Type=simple
+ExecCondition=/bin/sh -c '! ss -ltnH "sport = :9996" | grep -q .'
+ExecStart=%h/LLM/scripts/run-meta-llama-9996.sh
+Restart=no
+StandardOutput=append:%h/LLM/logs/meta-llama.log
+StandardError=append:%h/LLM/logs/meta-llama.log

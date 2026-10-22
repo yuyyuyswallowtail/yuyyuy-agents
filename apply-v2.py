@@ -1,4 +1,5 @@
 import copy, json, os, sys, uuid
+import wfkit
 
 # usage: python3 apply-v2.py <export workflow gabungan .json> <output .json>
 src, dst = sys.argv[1:3]
@@ -6,10 +7,11 @@ OWNER = "yuyyuyswallowtail"
 BRANCH = "feat/boost-skills"
 
 base = os.path.dirname(os.path.abspath(__file__))
-engine = open(os.path.join(base, "engine.js")).read().rstrip()
+engine = wfkit.load_engine(base)
 
 wf = json.load(open(src))
 wf = wf[0] if isinstance(wf, list) else wf
+wfkit.ensure_llama(wf)
 nodes = {n["name"]: n for n in wf["nodes"]}
 for need in ("Sanitize", "Create GitHub Repo", "Config", "Router", "Absorb", "Done", "Exec"):
     assert need in nodes, f"node '{need}' tidak ada di workflow"
@@ -26,6 +28,7 @@ CFG = {
     "maxRev": 2,
     "maxFix": 2,
     "maxIter": 4000,
+    "scrum": wfkit.SCRUM_CFG,
 }
 cfg_js = json.dumps(CFG, indent=2)
 a = '"name": "yuyyuy-admin-web",'
@@ -42,7 +45,7 @@ TAIL = {
 }
 for name, tail in TAIL.items():
     nodes[name]["parameters"]["jsCode"] = engine + "\n\n" + tail
-for name in ("DeepSeek Planner", "Qwen Coder", "Ministral Memory"):
+for name in ("DeepSeek Planner", "Qwen Coder", "Ministral Memory", wfkit.LLAMA):
     if name in nodes:
         nodes[name]["parameters"].setdefault("options", {})["timeout"] = 5400000
 

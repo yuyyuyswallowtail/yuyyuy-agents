@@ -1,7 +1,7 @@
 /* ===== yuyyuy agent engine v2.1 (embedded in the n8n Config, Router, Absorb and Done Code nodes) ===== */
-const LIM = { scope: 5200, snap: 3000, skills: 7500, memo: 1800, md: 6500, file: 2500, files: 7000, checks: 2200, brief: 1500, reads: 4000 };
+const LIM = { scope: 5200, snap: 3000, skills: 7500, memo: 1800, md: 6500, file: 2500, files: 7000, checks: 2200, brief: 1500, reads: 4000, deps: 3500 };
 const TOK = { docs: 6000, fix: 4000, code: 3500, qa: 1800, brief: 300, record: 160 };
-const LLM_ACTIONS = ['deepseek', 'qwen', 'ministral'];
+const LLM_ACTIONS = ['deepseek', 'qwen', 'ministral', 'llama'];
 const DEFAULT_CHECK = [['Files Per Layer', []], ['Contracts', []], ['Edge Cases', []], ['Test Plan', []]];
 const BASE_OWNED = ['routes/web.php', 'app/Providers/RepositoryServiceProvider.php', 'database/seeders/DatabaseSeeder.php', 'bootstrap/providers.php', 'bootstrap/app.php'];
 const BAD_PATHS = /^app\/(Exceptions\/Handler|Http\/Kernel)\.php$/;
@@ -9,12 +9,17 @@ const LAYER_RE = {
   backend: /^(app\/(Models|Enums|DTOs|Repositories|Services|Validators|Policies|Providers|Support|Exceptions|Jobs|Http\/(Controllers|Requests|Middleware|Resources))\/|routes\/|database\/(migrations|factories|seeders)\/|config\/|bootstrap\/(providers|app)\.php$|tests\/Unit\/|docs\/|README\.md$|\.env\.example$)/,
   frontend: /^(resources\/|app\/Livewire\/|app\/View\/|routes\/features\/|public\/|tests\/Feature\/(Livewire|Public)\/)/,
   qa: /^(tests\/|docs\/|phpunit\.xml$|pint\.json$)/,
+  database: /^(database\/(migrations|factories|seeders)\/|app\/(Models|Enums)\/|tests\/Unit\/(Models|Enums|Database)\/)/,
+  uiux: /^(docs\/design\/[A-Za-z0-9._-]+\.md$|resources\/css\/)/,
 };
 const LAYER_HELP = {
   backend: 'app/{Models,Enums,DTOs,Repositories,Services,Validators,Policies,Providers,Support,Exceptions,Jobs}, app/Http/{Controllers,Requests,Middleware,Resources}, routes/, database/{migrations,factories,seeders}, config/, bootstrap/{providers,app}.php, tests/Unit/, docs/, README.md, .env.example (NOT app/Exceptions/Handler.php or app/Http/Kernel.php: they do not exist in Laravel 11+)',
   frontend: 'resources/, app/Livewire/, app/View/, routes/features/, public/, tests/Feature/{Livewire,Public}/',
   qa: 'tests/, docs/, phpunit.xml, pint.json',
+  database: 'database/{migrations,factories,seeders}, app/{Models,Enums}, tests/Unit/{Models,Enums,Database}',
+  uiux: 'docs/design/<slice>.md, resources/css/',
 };
+const depsBlock = (S) => (S.ctx && S.ctx.DEPS ? `\n\nINSTALLED DEPENDENCIES (authoritative; newer than your training data):\n${clip(S.ctx.DEPS, LIM.deps)}` : '');
 
 const clip = (s, n) => { s = String(s == null ? '' : s); return s.length > n ? s.slice(0, n) + '\n...[truncated]' : s; };
 const b64 = (s) => Buffer.from(String(s), 'utf8').toString('base64');
@@ -97,7 +102,7 @@ const slice = (S) => S.slices[S.si];
 const checkOf = (sl) => (sl.check && sl.check.length ? sl.check : DEFAULT_CHECK);
 
 function plannerSystem(S) {
-  return `${S.ctx.PLANNER}\n\nAGENT: ${S.agent}\nREPO ROOT (absolute): ${S.cfg.root}\nALLOWED PATHS (relative to root): ${LAYER_HELP[S.agent]}\n\nSKILLS (excerpts, absolute paths):\n${clip(S.ctx.SKILLS, LIM.skills)}`;
+  return `${S.ctx.PLANNER}\n\nAGENT: ${S.agent}\nREPO ROOT (absolute): ${S.cfg.root}\nALLOWED PATHS (relative to root): ${LAYER_HELP[S.agent]}\n\nSKILLS (excerpts, absolute paths):\n${clip(S.ctx.SKILLS, LIM.skills)}${depsBlock(S)}`;
 }
 function sliceHeader(S) {
   const s = slice(S);
@@ -129,7 +134,8 @@ function failGate(S, gate) {
 
 function route(S) {
   S.iter = (S.iter || 0) + 1;
-  if (S.iter > S.cfg.maxIter) { S.abort = 'iteration cap reached'; S.step = 'done'; }
+  const iterCap = (S.cfg.scrum && S.cfg.scrum.enabled && S.cfg.scrum.maxIter) || S.cfg.maxIter;
+  if (S.iter > iterCap) { S.abort = 'iteration cap reached'; S.step = 'done'; }
   delete S.cmd; delete S.req;
   for (;;) {
     switch (S.step) {
@@ -159,17 +165,22 @@ function route(S) {
       case 'task_start': {
         const sl = slice(S); const plan = S.plans[sl.id];
         if (S.ti >= plan.tasks.length) {
+          if (S.sc) { S.step = 'sc_impl_done'; continue; }
           if (S.cfg.git && S.sliceFail === 0) { S.step = 'ship'; continue; }
           S.si++; S.step = 'slice_start'; continue;
         }
         S.task = plan.tasks[S.ti]; S.attempt = 0; S.feedback = ''; S.readctx = '';
         S.scopeKey = sl.id + '/' + S.task.id;
+        if (S.sc && S.task.role) {
+          S.agent = S.task.role;
+          if (S.ctxRole !== S.task.role) { S.ctxWant = S.task.role; S.afterCtx = 'task_start'; S.step = 'sc_ctx'; continue; }
+        }
         S.afterRecall = S.task.reads && S.task.reads.length ? 'reads' : 'code';
         S.step = 'recall'; continue;
       }
 
       case 'recall':
-        return execCmd(S, memCmd(S, `recall ${S.agent} ${S.scopeKey} 12`));
+        return execCmd(S, memCmd(S, `recall ${S.agent} ${S.scopeKey} 12${S.sc && S.sc.conv ? ' ' + S.sc.conv : ''}`));
 
       case 'brief':
         S.action = 'ministral';
@@ -205,15 +216,15 @@ function route(S) {
         return S;
 
       case 'mem_add':
-        return execCmd(S, memCmd(S, `add ${S.agent} ${S.scopeKey} ${S.recKind} ${S.recStatus} ${b64(S.line)}`));
+        return execCmd(S, memCmd(S, `add ${S.agent} ${S.scopeKey} ${S.recKind} ${S.recStatus} ${b64(S.line)}${S.sc && S.sc.conv ? ` ${S.sc.conv} ${S.recModel || (S.task && S.task.writer) || 'unknown'} ${S.recPhase || 'impl'} ${S.sc.iter || 0}` : ''}`));
 
       case 'docs_next': S.si++; S.step = 'slice_start'; continue;
 
       case 'code': {
         const sl = slice(S); const plan = S.plans[sl.id]; const t = S.task;
-        S.action = 'qwen';
-        S.req = chat(`${S.ctx.CODER}\n\nREPO ROOT (absolute): ${S.cfg.root}\n\nSKILLS (excerpts, absolute paths):\n${clip(S.ctx.SKILLS, LIM.skills)}`,
-          `TASK ${t.id} of feature ${sl.id}: ${t.title}\nFiles to write (absolute, write ONLY these):\n${t.files.map((f) => '- ' + f).join('\n')}\n\nINSTRUCTION:\n${t.instruction}\n\n${S.readctx ? `EXISTING FILES (read-only context; if one is also in the write list, output it COMPLETE and keep all existing content):\n${clip(S.readctx, LIM.reads)}\n\n` : ''}FEATURE BRIEF FROM PLANNER:\n${clip(plan.coder, LIM.brief)}\n\nMEMORY BRIEF:\n${S.memctx}\n${S.attempt > 0 ? `\nREVIEW FEEDBACK (attempt ${S.attempt}, fix all points):\n${clip(S.feedback, 1800)}\n` : ''}\nReply with FILE/END blocks, REPORT, MEMORY.`, TOK.code, 0.3);
+        S.action = S.sc && t.writer === 'llama' ? 'llama' : 'qwen';
+        S.req = chat(`${S.ctx.CODER}\n\nREPO ROOT (absolute): ${S.cfg.root}\n\nSKILLS (excerpts, absolute paths):\n${clip(S.ctx.SKILLS, LIM.skills)}${depsBlock(S)}`,
+          `TASK ${t.id} of feature ${sl.id}: ${t.title}\nFiles to write (absolute, write ONLY these):\n${t.files.map((f) => '- ' + f).join('\n')}\n\nINSTRUCTION:\n${t.instruction}\n\n${S.readctx ? `EXISTING FILES (read-only context; if one is also in the write list, output it COMPLETE and keep all existing content):\n${clip(S.readctx, LIM.reads)}\n\n` : ''}FEATURE BRIEF FROM PLANNER:\n${clip(t.coder || plan.coder, LIM.brief)}\n\nMEMORY BRIEF:\n${S.memctx}\n${S.attempt > 0 ? `\nREVIEW FEEDBACK (attempt ${S.attempt}, fix all points):\n${clip(S.feedback, 1800)}\n` : ''}\nReply with FILE/END blocks, REPORT, MEMORY.`, TOK.code, 0.3);
         return S;
       }
 
@@ -234,7 +245,11 @@ function route(S) {
         const key = S.agent + ':' + slice(S).id + '/' + S.task.id;
         if (S.passed) { S.stats.pass.push(key); S.ti++; S.step = 'task_start'; continue; }
         S.attempt++;
-        if (S.attempt > S.cfg.maxFix) { S.stats.fail.push(key); S.sliceFail++; S.ti++; S.step = 'task_start'; continue; }
+        if (S.attempt > S.cfg.maxFix) {
+          S.stats.fail.push(key); S.sliceFail++; S.ti++; S.step = 'task_start';
+          if (S.sc) S.sc.failed.push({ key, files: S.task.files, feedback: clip(S.feedback, 500) });
+          continue;
+        }
         S.afterRecall = 'code'; S.step = 'recall'; continue;
       }
 
@@ -254,13 +269,15 @@ function route(S) {
         return S;
 
       default:
+        if (String(S.step).startsWith('sc_')) { const r = scrumRoute(S); if (r) return r; continue; }
         S.abort = 'unknown step ' + S.step; S.step = 'done'; continue;
     }
   }
 }
 
-function recordNext(S, kind, status, raw, after) {
+function recordNext(S, kind, status, raw, after, model, phase) {
   S.recKind = kind; S.recStatus = status; S.recRaw = raw; S.afterRecord = after; S.step = 'record';
+  S.recModel = model || ''; S.recPhase = phase || '';
 }
 
 function absorb(S, raw) {
@@ -391,9 +408,10 @@ function absorb(S, raw) {
       let a; try { a = JSON.parse(text.trim()); } catch (e) { a = { written: [], rejected: [], checks: [], error: (err || text || 'apply.php returned no JSON').slice(0, 300) }; }
       a.missing = (S.task.files || []).filter((f) => !(a.written || []).includes(f));
       S.apply = a;
+      if (S.sc) (a.written || []).forEach((f) => { if (!S.sc.written.includes(f)) S.sc.written.push(f); });
       const gate = gateFailures(S, a);
       if (gate.length) return failGate(S, gate);
-      if (S.cfg.qa === false) {
+      if (S.cfg.qa === false || S.sc) {
         S.passed = true; S.feedback = '';
         recordNext(S, 'qa', 'pass', `Task ${S.task.id} attempt ${S.attempt}. Coder: ${S.coderMemo}\nVerdict: PASS (automated gate only).\nWritten: ${(a.written || []).join(', ')}\nChecks: ${(a.checks || []).map((c) => `${c.cmd}=>${c.code}`).join('; ')}`, 'task_after');
         return S;
@@ -420,15 +438,19 @@ function absorb(S, raw) {
       S.si++; S.step = 'slice_start'; return S;
     }
     default:
+      if (String(S.step).startsWith('sc_')) return scrumAbsorb(S, text, err);
       S.abort = 'absorb: unexpected step ' + S.step; S.step = 'done'; return S;
   }
 }
 
 function initialState(cfg) {
-  return { cfg, step: 'load_ctx', ai: 0, iter: 0, retry: 0, llmErrs: 0, warn: [], stats: { pass: [], fail: [], docsIncomplete: [], docsFailed: [], agents: [], resumed: [], skipped: [], shipped: [], gitFailed: [] } };
+  const S = { cfg, step: 'load_ctx', ai: 0, iter: 0, retry: 0, llmErrs: 0, warn: [], stats: { pass: [], fail: [], docsIncomplete: [], docsFailed: [], agents: [], resumed: [], skipped: [], shipped: [], gitFailed: [] } };
+  if (cfg.scrum && cfg.scrum.enabled) scrumInit(S);
+  return S;
 }
 
 function summary(S) {
+  if (S.sc) return scrumSummary(S);
   return { ok: !S.abort && !S.stats.fail.length, abort: S.abort || null, lastLlmError: S.lastLlmErr || null, maxPromptChars: S.maxPrompt || 0, agentsDone: S.stats.agents, tasksPassed: S.stats.pass.length, tasksFailed: S.stats.fail, docsIncomplete: S.stats.docsIncomplete, docsFailed: S.stats.docsFailed, resumed: S.stats.resumed, skippedFeatures: S.stats.skipped, shipped: S.stats.shipped, gitFailed: S.stats.gitFailed, warnings: S.warn.slice(-15), iterations: S.iter };
 }
 

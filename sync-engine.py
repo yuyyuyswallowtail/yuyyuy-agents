@@ -1,9 +1,10 @@
 import json, os
+import wfkit
 
 base = os.path.dirname(os.path.abspath(__file__))
-engine = open(os.path.join(base, "engine.js")).read().rstrip()
+engine = wfkit.load_engine(base)
 wf_path = os.path.join(base, "yuyyuy-agents.workflow.json")
-wf = json.load(open(wf_path))
+wf = wfkit.ensure_llama(json.load(open(wf_path)))
 
 CFG = {
     "name": "yuyyuy-admin-web",
@@ -17,6 +18,7 @@ CFG = {
     "maxRev": 2,
     "maxFix": 2,
     "maxIter": 4000,
+    "scrum": wfkit.SCRUM_CFG,
 }
 TAIL = {
     "Config": "const cfg = " + json.dumps(CFG, indent=2) + ";\nreturn [{ json: initialState(cfg) }];",
@@ -30,4 +32,4 @@ for n in wf["nodes"]:
     if n["type"] == "n8n-nodes-base.httpRequest":
         n["parameters"].setdefault("options", {})["timeout"] = 5400000
 json.dump(wf, open(wf_path, "w"), indent=1)
-print("OK engine v2 ->", wf_path)
+print("OK engine v2.1 + scrum ->", wf_path)

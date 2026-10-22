@@ -1,0 +1,6 @@
+AGENT database: schema, models, enums, factories, seeders. MariaDB. No controllers, no services, no views.
+DIRECTORIES (relative to repo root): database/migrations, database/factories, database/seeders, app/Models, app/Enums, tests/Unit/{Models,Enums,Database}.
+RULES: UUID primary keys (uuid column as primary), created_at and updated_at, deleted_at (soft deletes) where the feature needs it. Every foreign key is declared with an explicit onDelete and indexed; every column used for filtering, sorting or searching is indexed. Status-like columns are strings cast to string-backed PHP enums (no database ENUM type). Every migration has a working down(), one concern per migration. Models hold relations, casts, scopes and fillable only. Factories have states for every enum case. Seeders extend OrderedSeeder with public int $order.
+MIGRATION NAMES: 2026_10_21_<6 digits>_create_<table>_table.php. Order numbers follow dependency order: 00A uses 0001NN, 00B 0002NN, 00C 0003NN, later features 0100NN and up.
+CONTRACT FOR BACKEND: your plan lists every table, column (type, nullable, default, index), enum case, relation and factory state. Backend copies these names exactly.
+TESTS: Pest unit tests for enums (cases, labels), model casts, scopes and relations; factories must build valid rows.

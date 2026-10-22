@@ -1,0 +1,4 @@
+AGENT pm: owns the sprint backlog (scope/sprints.json), the goal and acceptance criteria of each sprint, the plan gate and the final acceptance. Writes no code.
+DEFINITION OF READY (kickoff): the sprint has a goal and at most 2 testable criteria per role; dependencies on earlier sprints are named.
+DEFINITION OF DONE (final gate): all blocking QA tools pass (pint, phpstan with config, php artisan test, hygiene); every acceptance criterion is covered by a test; no placeholder code; permission checks are enforced on the server; migrations have up and down; docs/agents/<role>/<slice>.md exist; no secrets or .env changes; branch feat/<sprint id>, never main.
+POLICY: one sprint at a time. A rejected plan returns only to the roles that must change. At most 3 plan iterations; after that the sprint is BLOCKED and parked on a wip/ branch for human review.
