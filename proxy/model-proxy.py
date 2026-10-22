@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """On-demand model switcher + proxy for llama.cpp.
 
-Only one heavy model (deepseek or qwen-coder) runs at a time; the memory model
-(ministral) is never touched. Requests to a proxy port start that model first
-and stop the other heavy one.
+Only one heavy model (deepseek, qwen-coder or meta-llama) runs at a time; the
+memory model (ministral) is never touched. Requests to a proxy port start that
+model first and stop the other heavy ones.
 
   deepseek    proxy :9899 -> llama-server :9999
   qwen-coder  proxy :9898 -> llama-server :9998
+  meta-llama  proxy :9897 -> llama-server :9996
 """
 import http.client, json, os, re, signal, sqlite3, subprocess, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -18,6 +19,7 @@ DB = os.environ.get("AGENT_DB", os.path.expanduser("~/n8n/workspace/_agents/memo
 MODELS = {
     "deepseek":   {"proxy": 9899, "port": 9999, "unit": "llama-deepseek.service"},
     "qwen-coder": {"proxy": 9898, "port": 9998, "unit": "llama-qwen-coder.service"},
+    "meta-llama": {"proxy": 9897, "port": 9996, "unit": "llama-meta-llama.service"},
 }
 
 cond = threading.Condition()
@@ -87,9 +89,9 @@ def ensure(name):
 
 
 def acquire(name):
-    other = [n for n in MODELS if n != name][0]
+    others = [n for n in MODELS if n != name]
     with cond:
-        while state["switching"] or state["inflight"][other] > 0:
+        while state["switching"] or any(state["inflight"][o] > 0 for o in others):
             cond.wait(timeout=5)
         state["switching"] = True
     try:
@@ -144,7 +146,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path.split("?")[0] == "/health":
             return self._json(200, {"status": "ok", "active": state["active"],
-                                    "deepseek": health(9999), "qwen-coder": health(9998)})
+                                    **{n: health(m["port"]) for n, m in MODELS.items()}})
         self._proxy()
 
     def do_POST(self):

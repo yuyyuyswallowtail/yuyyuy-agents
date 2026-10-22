@@ -1,2 +1,4 @@
 memory/agent.db
 merged.workflow.json
+__pycache__/
+*.pyc

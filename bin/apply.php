@@ -3,7 +3,7 @@ declare(strict_types=1);
 
 /*
  * Safe applier for executor output. Reads base64 JSON from stdin, prints JSON.
- *   php apply.php docs   {root, agent, slice, md, tasks}
+ *   php apply.php docs   {root, agent, slice, md, tasks}   agent: backend|frontend|qa|database|uiux|pm (pm: tasks optional)
  *   php apply.php files  {root, files:[{path,content}], checks:[cmd]}
  */
 
@@ -105,7 +105,7 @@ if ($root === '' || $root[0] !== '/' || !is_dir($root)) {
 if ($mode === 'docs') {
     $agent = (string) ($in['agent'] ?? '');
     $slice = (string) ($in['slice'] ?? '');
-    if (!in_array($agent, ['backend', 'frontend', 'qa'], true) || preg_match('/^[a-z0-9-]+$/', $slice) !== 1) {
+    if (!in_array($agent, ['backend', 'frontend', 'qa', 'database', 'uiux', 'pm'], true) || preg_match('/^[A-Za-z0-9-]+$/', $slice) !== 1) {
         fail('invalid agent or slice');
     }
     $dir = "$root/docs/agents/$agent";
@@ -113,7 +113,9 @@ if ($mode === 'docs') {
     $tasks = "$dir/$slice.tasks.json";
     try {
         writeFile($md, (string) ($in['md'] ?? '') . "\n");
-        writeFile($tasks, json_encode($in['tasks'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+        if (($in['tasks'] ?? null) !== null || $agent !== 'pm') {
+            writeFile($tasks, json_encode($in['tasks'] ?? [], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n");
+        }
     } catch (Throwable $e) {
         fail($e->getMessage());
     }
