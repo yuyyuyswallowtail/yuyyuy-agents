@@ -41,18 +41,29 @@ def ensure_llama(wf):
         n.pop("credentials", None)
         wf["nodes"].append(n)
     route = nodes["Route"]
-    values = route["parameters"]["rules"]["values"]
-    if not any(v.get("outputKey") == "llama" for v in values):
-        rule = copy.deepcopy(next(v for v in values if v.get("outputKey") == "qwen"))
-        rule["outputKey"] = "llama"
+    values = route["parameters"].get("rules", {}).get("values")
+    assert values, "Route has no rules.values (unexpected Switch layout): send the Route node JSON"
+
+    def cond_value(v):
+        cs = (v.get("conditions") or {}).get("conditions") or []
+        return cs[0].get("rightValue") if cs else None
+
+    def is_rule(v, key):
+        return v.get("outputKey") == key or cond_value(v) == key
+
+    if not any(is_rule(v, "llama") for v in values):
+        donor_rule = next((v for v in values if is_rule(v, "qwen")), values[0])
+        rule = copy.deepcopy(donor_rule)
         rule["conditions"]["conditions"][0]["id"] = "llama"
         rule["conditions"]["conditions"][0]["rightValue"] = "llama"
+        rule["renamedOutput"] = True
+        rule["outputKey"] = "llama"
         values.append(rule)
     C = wf["connections"]
     main = C["Route"]["main"]
     while len(main) < len(values):
         main.append([])
-    idx = next(i for i, v in enumerate(values) if v.get("outputKey") == "llama")
+    idx = next(i for i, v in enumerate(values) if is_rule(v, "llama"))
     if not any(l["node"] == LLAMA for l in main[idx]):
         main[idx] = [{"node": LLAMA, "type": "main", "index": 0}]
     C[LLAMA] = {"main": [[{"node": "Absorb", "type": "main", "index": 0}]]}
