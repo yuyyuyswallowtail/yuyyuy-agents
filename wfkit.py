@@ -15,7 +15,10 @@ SCRUM_CFG = {
     "maxFinal": 2,          # fix rounds after a final rejection
     "maxSprints": 0,        # 0 = unlimited; N = stop after N sprints (keeps one n8n execution small)
     "onBlocked": "stop",    # stop | continue
-    "qaMutation": False,    # run pest --mutate in the QA tools (needs Xdebug or PCOV)
+    "qaMutation": "auto",   # pest --mutate: auto = only when Xdebug or PCOV is present; True/False forces it
+    "qaE2e": "auto",        # Playwright E2E: auto = only when playwright.config.* and @playwright/test are installed
+    "e2eBlocking": False,   # True: a failing E2E run forces the PM to reject
+    "requireTests": True,   # backend/frontend plans must contain a test task
 }
 
 

@@ -78,7 +78,10 @@ function run(name, opts) {
       if (opts.fbCheck && role === 'frontend' && S.sc.iter === 2) assert(/PM FEEDBACK YOU MUST FIX/.test(usr) && /use the token/.test(usr), 'feedback must reach the redone part');
       const files = FILES(slice, sprint)[role].map((f) => `${root}/${f}`);
       const task = { id: 't1', title: role + ' work', files, reads: [], instruction: 'do it', checks: files.filter((f) => f.endsWith('.php')).map((f) => 'php -l ' + f) };
-      return reply(`<<<MD>>>\n${HEAD}\n<<<TASKS>>>\n${JSON.stringify([task])}\n<<<CODER>>>\nuse exact names\n<<<MEMORY>>>\nplanned ${key}`);
+      const tasks = [task];
+      const testFile = { backend: 'tests/Unit/Support/KitTest.php', frontend: 'tests/Feature/Livewire/ButtonTest.php' }[role];
+      if (testFile && !(opts.noTestTask && !(opts.testAfter !== undefined && calls.plan.filter((k) => k.startsWith(key)).length > opts.testAfter))) tasks.push({ id: 't2', title: role + ' test', files: [`${root}/${testFile}`], reads: [], instruction: 'write the Pest test', checks: [] });
+      return reply(`<<<MD>>>\n${HEAD}\n<<<TASKS>>>\n${JSON.stringify(tasks)}\n<<<CODER>>>\nuse exact names\n<<<MEMORY>>>\nplanned ${key}`);
     }
     if (S.step === 'code') {
       const files = usr.split('Files to write (absolute, write ONLY these):\n')[1].split('\n\n')[0].split('\n').map((l) => l.replace(/^- /, ''));
@@ -159,5 +162,23 @@ console.log('E) resume: a sprint whose plan docs already exist skips kickoff, pl
   const r = run('E', { only: ['00A'], gates: [], pre }); const s = r.summary;
   assert.deepStrictEqual(s.resumed, ['00A-schema-identity']); assert.deepStrictEqual(s.shipped, ['00A-schema-identity'], JSON.stringify(s)); pass('resumed from docs and shipped');
   assert.strictEqual(r.calls.plan.length, 0); assert.strictEqual(r.calls.gate, 0); assert(!heavy(r.trace).includes('deepseek') || r.calls.final === 1); pass('no planning, no gate; only implementation + final + retro ran: ' + heavy(r.trace).join('>'));
+}
+console.log('F) a plan without a test task is sent back once, then accepted');
+{
+  const r = run('F', { only: ['00D'], gates: ['APPROVE'], noTestTask: true, testAfter: 1 }); const s = r.summary;
+  assert.deepStrictEqual(s.shipped, ['00D-query-kit'], JSON.stringify(s));
+  const be = r.calls.plan.filter((k) => k.startsWith('backend:00D')); assert.strictEqual(be.length, 2, be.join()); pass('backend plan revised once because it had no test task: ' + be.join(' '));
+  assert(r.calls.code.some((c) => /KitTest\.php/.test(c)) && r.calls.code.some((c) => /ButtonTest\.php/.test(c)), r.calls.code.join()); pass('test files of backend and frontend were written: ' + r.calls.code.join(' > '));
+  assert.strictEqual(r.calls.final, 1); pass('no extra final round needed');
+}
+
+console.log('G) planners never add tests: the QA gate blocks, the engine asks qa to write them');
+{
+  const r = run('G', { only: ['00D'], gates: ['APPROVE'], noTestTask: true }); const s = r.summary;
+  assert.deepStrictEqual(s.shipped, ['00D-query-kit'], JSON.stringify(s));
+  const be = r.calls.plan.filter((k) => k.startsWith('backend:00D')); assert.strictEqual(be.length, 3, be.join()); pass('backend plan stayed incomplete after 2 revisions (3 calls), the gate still saw it');
+  assert.strictEqual(r.calls.final, 2, 'final rounds ' + r.calls.final); pass('PM approved but tests-added failed: forced a fix round');
+  assert(r.calls.code.some((c) => c.startsWith('llama:QueryParamsTest.php')), r.calls.code.join()); pass('the qa writer (llama) created tests/Unit/Support/QueryParamsTest.php');
+  assert(git(r.fx, 'git ls-files tests | grep -c QueryParamsTest') === '1'); pass('the test file is part of the shipped branch');
 }
 console.log(`\nSCRUM_SIM_OK (${ok} checks)`);

@@ -6,5 +6,6 @@
  {"id":"21A-feature-rbac","title":"Feature tests: RBAC","brief":"Feature tests: multi-role user, permission denial per role, role assignment, user status change."},
  {"id":"21B-feature-content","title":"Feature tests: content","brief":"Feature tests: article workflow and ownership, nested comments, products CRUD authorization, query filtering, search, sort, pagination."},
  {"id":"22-lint-static","title":"Style and static checks","brief":"Run pint, route:list, migrate:status, composer validate; fix style issues."},
- {"id":"23-security-review","title":"Security review","brief":"Review authorization on every route, uploads, rate limits, secret exposure, soft-delete leakage; write docs/security-findings.md."}
+ {"id":"23-security-review","title":"Security review","brief":"Review authorization on every route, uploads, rate limits, secret exposure, soft-delete leakage; write docs/security-findings.md."},
+ {"id":"24-e2e-playwright","title":"E2E with Playwright, one test user per role","brief":"Fill tests/e2e/access-matrix.json (every route x every role, including guest) and add Playwright specs for the main journeys per role: sign in, create/edit/delete content, the pages each role must NOT open. The scaffold (playwright.config.ts, fixtures.ts, E2eUsersSeeder) already exists; extend it, do not recreate it."}
 ]
