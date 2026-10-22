@@ -8,6 +8,8 @@ MODEL="${MODEL:-$HOME/.lmstudio/models/lmstudio-community/Meta-Llama-3.1-8B-Inst
 CTX="${CTX:-32768}"
 PORT="${PORT:-9996}"
 KV_TYPE="${KV_TYPE:-q4_0}"
+# Llama 3.1 under --jinja answered plain prompts with tool-call JSON; the built-in llama3 template does not.
+CHAT_TEMPLATE="${CHAT_TEMPLATE:-llama3}"
 NBATCH="${NBATCH:-1024}"
 UBATCH="${UBATCH:-256}"
 
@@ -27,6 +29,7 @@ echo "role=worker-agent (database, ui/ux, qa, product manager)"
 echo "model=$(basename "$MODEL")"
 echo "ctx=$CTX"
 echo "port=$PORT"
+echo "template=$CHAT_TEMPLATE"
 echo "kv=$KV_TYPE"
 echo "batch=$NBATCH"
 echo "ubatch=$UBATCH"
@@ -37,7 +40,7 @@ exec "$LLAMA_SERVER" \
     --alias meta-llama-3.1 \
     --host 172.18.0.1 \
     --port "$PORT" \
-    --jinja \
+    --chat-template "$CHAT_TEMPLATE" \
     -fa on \
     -ngl 99 \
     -c "$CTX" \
