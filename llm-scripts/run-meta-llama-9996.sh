@@ -8,13 +8,20 @@ MODEL="${MODEL:-$HOME/.lmstudio/models/lmstudio-community/Meta-Llama-3.1-8B-Inst
 CTX="${CTX:-32768}"
 PORT="${PORT:-9996}"
 KV_TYPE="${KV_TYPE:-q4_0}"
-# Llama 3.1 under --jinja answered plain prompts with tool-call JSON; the built-in llama3 template does not.
-CHAT_TEMPLATE="${CHAT_TEMPLATE:-llama3}"
+# The GGUF's own template made Llama 3.1 answer plain prompts with tool-call JSON, and in recent llama.cpp
+# builds "--chat-template llama3" is taken as literal template text (the prompt collapses to 4 tokens).
+# A plain Llama 3 template file keeps the format exact and adds no tool instructions.
+TEMPLATE_FILE="${TEMPLATE_FILE:-$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/llama3.jinja}"
 NBATCH="${NBATCH:-1024}"
 UBATCH="${UBATCH:-256}"
 
 [ -x "$LLAMA_SERVER" ] || {
     echo "llama-server tidak ditemukan: $LLAMA_SERVER"
+    exit 1
+}
+
+[ -f "$TEMPLATE_FILE" ] || {
+    echo "template tidak ditemukan: $TEMPLATE_FILE (salin llm-scripts/llama3.jinja ke folder yang sama)"
     exit 1
 }
 
@@ -29,7 +36,7 @@ echo "role=worker-agent (database, ui/ux, qa, product manager)"
 echo "model=$(basename "$MODEL")"
 echo "ctx=$CTX"
 echo "port=$PORT"
-echo "template=$CHAT_TEMPLATE"
+echo "template=$TEMPLATE_FILE"
 echo "kv=$KV_TYPE"
 echo "batch=$NBATCH"
 echo "ubatch=$UBATCH"
@@ -40,7 +47,8 @@ exec "$LLAMA_SERVER" \
     --alias meta-llama-3.1 \
     --host 172.18.0.1 \
     --port "$PORT" \
-    --chat-template "$CHAT_TEMPLATE" \
+    --jinja \
+    --chat-template-file "$TEMPLATE_FILE" \
     -fa on \
     -ngl 99 \
     -c "$CTX" \
