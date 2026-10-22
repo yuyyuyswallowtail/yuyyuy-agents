@@ -187,6 +187,25 @@ function scPmDoc(S) {
 }
 
 /* ---------- router: one step per call; returns S when an action is ready, null to let the main loop continue ---------- */
+// A reply sometimes leaks a section delimiter into the body, and a revision used to be appended whole, which
+// duplicated headings (and let the model contradict its first attempt). Keep the first text; only add headings
+// that are new, and replace a heading only when the engine asked for exactly that one.
+function cleanMd(md) {
+  return String(md || '').replace(/\r/g, '').replace(/^[ \t]*(<<<[A-Z]*(?: [^>\n]*)?(>>>)?|>>>)[ \t]*$/gm, '').replace(/\s+$/, '');
+}
+const mdParts = (md) => String(md || '').split(/^(?=#{1,6}[ \t]+\S)/m).filter((x) => x.trim());
+const mdKey = (x) => ((x.match(/^#{1,6}[ \t]+(.*)$/m) || [, ''])[1] || '').trim().toLowerCase();
+function mergeMd(old, add, missing) {
+  const want = (missing || []).map((m) => { const x = /^heading "(.+?)"/.exec(m); return x ? x[1].toLowerCase() : null; }).filter(Boolean);
+  const out = mdParts(cleanMd(old)); const idx = {};
+  out.forEach((x, i) => { idx[mdKey(x)] = i; });
+  mdParts(cleanMd(add)).forEach((x) => {
+    const k = mdKey(x); if (!k) return;
+    if (k in idx) { if (want.some((w) => k.includes(w))) out[idx[k]] = x; } else { idx[k] = out.length; out.push(x); }
+  });
+  return out.map((x) => x.replace(/\s+$/, '')).join('\n\n');
+}
+
 function scrumRoute(S) {
   const sc = S.sc; const cfg = scCfg(S); const root = S.cfg.root; const bin = S.cfg.bin; const sp = sc.sp;
   switch (S.step) {
@@ -418,7 +437,7 @@ function scrumAbsorb(S, text, err) {
         if (sc.probeLines.length) { S.step = 'sc_probe'; return S; }
       }
       const md = pick(secs, 'MD');
-      if (md) cur.md = cur.md && sc.revs > 0 ? cur.md + '\n\n' + unfence(md) : unfence(md);
+      if (md) cur.md = cur.md && sc.revs > 0 ? mergeMd(cur.md, unfence(md), sc.missing) : cleanMd(unfence(md));
       let arr = null; try { arr = JSON.parse(unfence(pick(secs, 'TASKS') || '')); } catch (e) { arr = null; }
       const tasks = validateTasks(arr, root, part.role, part.slice);
       if (tasks) cur.tasks = tasks;
