@@ -20,7 +20,7 @@ function scrumInit(S) {
 
 // 'auto' lets qa-tools.sh decide from what is installed; true/false force it
 const scFlag = (v) => (v === 'auto' || v === undefined ? 'auto' : (v ? 1 : 0));
-const scCfg = (S) => Object.assign({ maxPlan: 3, maxRev: 2, maxProbe: 2, maxFinal: 2, maxSprints: 0, onBlocked: 'stop', qaMutation: 'auto', qaE2e: 'auto', e2eBlocking: false, requireTests: true, vision: 'auto', softGate: false }, S.cfg.scrum || {});
+const scCfg = (S) => Object.assign({ maxPlan: 3, maxRev: 2, maxProbe: 2, maxFinal: 2, maxSprints: 0, onBlocked: 'stop', qaMutation: 'auto', qaE2e: 'auto', e2eBlocking: false, requireTests: true, vision: 'auto', softGate: false, autoTest: true }, S.cfg.scrum || {});
 
 // load the bundle of one role (ctx.sh) before a step that needs its prompts, scope, skills and snapshot
 function scNeed(S, role, step) {
@@ -158,6 +158,23 @@ function scPlanUser(S, part) {
   return `SPRINT ${sp.id} - ${sp.title} (plan iteration ${sc.iter} of ${scCfg(S).maxPlan})\n${scKickText(S)}\n\nYOUR PART: ${part.key} - ${part.title}\nBRIEF: ${part.brief}\nACCEPTANCE CRITERIA FOR ${part.role}:\n${scCriteria(S, part.role)}\n`
     + (fb ? `\nPM FEEDBACK YOU MUST FIX (iteration ${sc.iter - 1}):\n${fb}\n` : '')
     + `\nPEER PLANS (reuse their exact names; their files are taken):\n${scPeers(S, part)}\n${facts}\nAGENT SCOPE:\n${clip(S.ctx.SCOPE, LIM.scope)}\n\nREPO SNAPSHOT:\n${clip(S.ctx.SNAPSHOT, LIM.snap)}\n\nMEMORY BRIEF:\n${S.memctx}\n\n${ask}`;
+}
+// the 8B planner keeps forgetting the test task: after the revisions are spent the engine derives one from the plan itself
+function scAutoTest(S, part, tasks) {
+  if (part.role !== 'backend' && part.role !== 'frontend') return null;
+  const root = S.cfg.root; const files = [].concat(...tasks.map((t) => t.files));
+  if (files.some((f) => /\/tests\/[^/]+\/.*\.php$/.test(f) || /\/tests\/.*\.(spec|test)\.[jt]s$/.test(f))) return null;
+  const claimed = scClaimed(S, part);
+  for (const f of files) {
+    const rel = f.slice(root.length + 1); let m; let test = null;
+    if (part.role === 'backend' && (m = rel.match(/^app\/(Models|Enums|DTOs|Repositories|Services|Validators|Policies|Support|Jobs|Http\/(?:Controllers|Requests|Middleware|Resources))\/(?:.+\/)?([A-Za-z0-9_]+)\.php$/)) && !/(Interface|Contract)$/.test(m[2])) test = `tests/Unit/${m[1]}/${m[2]}Test.php`;
+    if (part.role === 'frontend' && (m = rel.match(/^app\/Livewire\/(?:.+\/)?([A-Za-z0-9_]+)\.php$/))) test = `tests/Feature/Livewire/${m[1]}Test.php`;
+    if (!test) continue;
+    const abs = `${root}/${test}`;
+    if (files.includes(abs) || claimed[abs]) continue;
+    return { id: 'auto-test', title: `Pest test for ${rel}`, files: [abs], reads: [f], instruction: `Write the Pest test for ${rel}: cover its public methods, the contract and the edge cases named in the plan (sections Contracts, Edge Cases, Test Plan). Use factories or in-memory data, no network. Use the exact class and method names of ${rel}.`, checks: [`php -l ${abs}`] };
+  }
+  return null;
 }
 function scPlansText(S) {
   return S.sc.sp.parts.map((p) => {
@@ -474,6 +491,10 @@ function scrumAbsorb(S, text, err) {
       }
       sc.missing = missing;
       if (missing.length && sc.revs < cfg.maxRev) { sc.revs++; return S; } // same step: the router asks again for the gaps only
+      if (cfg.autoTest && cfg.requireTests && cur.tasks && cur.tasks.length < 6) {
+        const at = scAutoTest(S, part, cur.tasks);
+        if (at) { cur.tasks.push(at); const i = missing.findIndex((m) => /^TASKS must include at least one TEST task/.test(m)); if (i >= 0) missing.splice(i, 1); S.warn.push(`${part.key}: the planner added no test task, the engine added ${at.files[0].slice(root.length + 1)}`); }
+      }
       const dropped = [];
       if (cur.tasks && conflicts.length) {
         cur.tasks = cur.tasks.map((t) => Object.assign({}, t, { files: t.files.filter((f) => { if (claimed[f]) { dropped.push(`${f} (owned by ${claimed[f]})`); return false; } return true; }) })).filter((t) => t.files.length);

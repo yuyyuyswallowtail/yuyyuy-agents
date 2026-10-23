@@ -199,13 +199,22 @@ console.log('J) softGate: three PM rejections of complete plans are approved on 
 
 console.log('G) planners never add tests: the QA gate blocks, the engine asks qa to write them');
 {
-  const r = run('G', { only: ['00D'], gates: ['APPROVE'], noTestTask: true }); const s = r.summary;
+  const r = run('G', { only: ['00D'], gates: ['APPROVE'], noTestTask: true, scrum: { autoTest: false } }); const s = r.summary;
   assert.deepStrictEqual(s.shipped, ['00D-query-kit'], JSON.stringify(s));
   const be = r.calls.plan.filter((k) => k.startsWith('backend:00D')); assert.strictEqual(be.length, 3, be.join()); pass('backend plan stayed incomplete after 2 revisions (3 calls), the gate still saw it');
   assert.strictEqual(r.calls.final, 2, 'final rounds ' + r.calls.final); pass('PM approved but tests-added failed: forced a fix round');
   assert(r.calls.code.some((c) => c.startsWith('llama:QueryParamsTest.php')), r.calls.code.join()); pass('the qa writer (llama) created tests/Unit/Support/QueryParamsTest.php');
   assert(git(r.fx, 'git ls-files tests | grep -c QueryParamsTest') === '1'); pass('the test file is part of the shipped branch');
 }
+console.log('K) planners never add tests and autoTest is on: the engine derives the test task, the plan is complete, no QA fix round');
+{
+  const r = run('K', { only: ['00D'], gates: ['APPROVE'], noTestTask: true }); const s = r.summary;
+  assert.deepStrictEqual(s.shipped, ['00D-query-kit'], JSON.stringify(s));
+  const be = r.calls.plan.filter((k) => k.startsWith('backend:00D')); assert.strictEqual(be.length, 3, be.join()); pass('backend plan asked 3 times, then completed by the engine');
+  assert(r.calls.code.some((c) => /QueryParamsTest\.php/.test(c)), r.calls.code.join()); pass('the derived test file was written: ' + r.calls.code.join(' > '));
+  assert.strictEqual(r.calls.final, 1, 'final rounds ' + r.calls.final); pass('tests exist, so tests-added passes and no fix round is needed');
+}
+
 console.log('H) E2E screenshots exist: gemma3 reviews them and the PM sees the findings (advisory)');
 {
   const pre = (fx) => { const d = path.join(fx.root, 'storage/e2e-screens'); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'admin-dashboard.jpg'), Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////', 'base64')); };
