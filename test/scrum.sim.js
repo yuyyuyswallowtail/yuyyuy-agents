@@ -190,6 +190,13 @@ console.log('I) brace paths in TASKS: the revision tells the planner exactly why
   const be = r.calls.plan.filter((k) => k.startsWith('backend:00D')); assert.strictEqual(be.length, 2, be.join()); assert(r.calls.reasons); pass('rejected brace path was explained and fixed in one revision');
 }
 
+console.log('J) softGate: three PM rejections of complete plans are approved on the last iteration instead of blocking');
+{
+  const r = run('J', { only: ['00D'], gates: ['REJECT backend: x', 'REJECT backend: y', 'REJECT backend: z'], scrum: { softGate: true } }); const s = r.summary;
+  assert.deepStrictEqual(s.shipped, ['00D-query-kit'], JSON.stringify(s)); assert.strictEqual(s.planIterations['00D-query-kit'], 3); pass('soft-approved after 3 gate iterations and shipped');
+  assert(JSON.stringify(s).includes('soft-approved') || r.warn.some((w) => /soft-approved/.test(w)), 'warning must be recorded'); pass('the override is recorded as a warning');
+}
+
 console.log('G) planners never add tests: the QA gate blocks, the engine asks qa to write them');
 {
   const r = run('G', { only: ['00D'], gates: ['APPROVE'], noTestTask: true }); const s = r.summary;

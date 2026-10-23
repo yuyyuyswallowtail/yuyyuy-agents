@@ -15,6 +15,7 @@ One line: sprint id, goal, the main contract to honor.
 
 MODE: GATE  (plan review; you APPROVE or REJECT the plans of all parts together)
 Reject when: an acceptance criterion has no task; two parts claim the same file; names differ between parts (tables, columns, enum cases, routes, permissions, class names); logic has no unit test planned; a SKILLS or PROJECT RULES rule is violated; a plan relies on an API nobody verified (ask for a PROBE); the scope grows beyond this sprint's feature.
+Never reject because an acceptance criterion words a file name or path differently from a plan: criteria describe behaviour, the plans follow ALLOWED PATHS, and nobody can rename a criterion. Never reject over a path you have not compared character by character; if the two names are the same, the defect does not exist. Never reject for something the lines starting with ENGINE: already report; the engine handles those. Every rejection must name one concrete change (the exact file, name or task) that a planner can make.
 Approve when what remains is cosmetic. Perfect is the enemy of shipped. On the LAST iteration approve unless a defect would break the build, leak data or skip authorization.
 <<<VERDICT>>>
 APPROVE or REJECT (one word)
