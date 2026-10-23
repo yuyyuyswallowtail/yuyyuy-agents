@@ -1,6 +1,6 @@
 /* ===== yuyyuy agent engine v2.1 (embedded in the n8n Config, Router, Absorb and Done Code nodes) ===== */
 const LIM = { scope: 5200, snap: 3000, skills: 7500, memo: 1800, md: 6500, file: 2500, files: 7000, checks: 2200, brief: 1500, reads: 4000, deps: 3500 };
-const TOK = { docs: 6000, fix: 4000, code: 3500, qa: 1800, brief: 300, record: 160 };
+const TOK = { docs: 6000, fix: 6000, code: 3500, qa: 1800, brief: 300, record: 160 };
 const LLM_ACTIONS = ['deepseek', 'qwen', 'ministral', 'llama'];
 const DEFAULT_CHECK = [['Files Per Layer', []], ['Contracts', []], ['Edge Cases', []], ['Test Plan', []]];
 const BASE_OWNED = ['routes/web.php', 'app/Providers/RepositoryServiceProvider.php', 'database/seeders/DatabaseSeeder.php', 'bootstrap/providers.php', 'bootstrap/app.php'];
@@ -51,7 +51,7 @@ function ctxSections(text) {
 }
 
 function pathOk(f, root, agent, sliceId) {
-  if (typeof f !== 'string' || !f.startsWith(root + '/') || f.includes('..') || !/^[A-Za-z0-9._\/-]+$/.test(f)) return false;
+  if (typeof f !== 'string' || !f.startsWith(root + '/') || f.endsWith('/') || f.includes('..') || !/^[A-Za-z0-9._\/-]+$/.test(f)) return false;
   const rel = f.slice(root.length + 1);
   if (BAD_PATHS.test(rel)) return false;
   if (LAYER_RE[agent] && !LAYER_RE[agent].test(rel)) return false;
@@ -63,26 +63,34 @@ function readOk(f, root) {
     && !/(^|\/)\.env/.test(f) && !/\/(vendor|node_modules|\.git)\//.test(f);
 }
 
-function validateTasks(tasks, root, agent, sliceId) {
-  if (!Array.isArray(tasks) || !tasks.length) return null;
+function validateTasks(tasks, root, agent, sliceId, why) {
+  why = why || [];
+  if (!Array.isArray(tasks) || !tasks.length) { why.push('TASKS must be a non-empty JSON array of task objects'); return null; }
   const out = [];
   tasks.slice(0, 6).forEach((t, i) => {
-    if (!t || typeof t !== 'object') return;
-    const files = (Array.isArray(t.files) ? t.files : []).filter((f) => pathOk(f, root, agent, sliceId)).slice(0, 3);
+    const tid = (t && t.id) || 't' + (i + 1);
+    if (!t || typeof t !== 'object') { why.push(`task ${tid}: not an object`); return; }
+    const rawFiles = Array.isArray(t.files) ? t.files : [];
+    const files = rawFiles.filter((f) => pathOk(f, root, agent, sliceId)).slice(0, 3);
+    rawFiles.filter((f) => !pathOk(f, root, agent, sliceId)).slice(0, 3).forEach((f) => why.push(`task ${tid}: rejected file ${JSON.stringify(f)} (need ONE concrete absolute file path under ${root}/ inside the allowed layers; no directories (no trailing /), no {} or * or .. ; the {A,B} notation in ALLOWED PATHS is shorthand, not a path)`));
+    if (!rawFiles.length) why.push(`task ${tid}: 'files' is missing or empty`);
     let reads = (Array.isArray(t.reads) ? t.reads : []).filter((f) => readOk(f, root)).slice(0, 3);
     files.forEach((f) => { if (BASE_OWNED.includes(f.slice(root.length + 1)) && !reads.includes(f)) reads.unshift(f); });
     reads = reads.slice(0, 3);
     const checks = (Array.isArray(t.checks) ? t.checks : []).filter((c) => typeof c === 'string').slice(0, 6);
+    if (!t.instruction) why.push(`task ${tid}: 'instruction' is missing`);
     if (!t.instruction || !files.length) return;
     out.push({ id: String(t.id || 't' + (i + 1)).replace(/[^A-Za-z0-9._-]/g, '-'), title: String(t.title || t.id || 'task'), files, reads, instruction: String(t.instruction), checks });
   });
   return out.length ? out : null;
 }
 
+// 'Contracts' also matches 'Contract'; 'Files Per Layer' also matches 'Files by layer'
+function headRe(h) { return esc(h).replace(/s\b/gi, 's?').replace(/\bper\b/i, '(?:per|by)'); }
 function coverage(md, check) {
   const low = String(md || '').toLowerCase();
   return (check || []).filter(([h, kw]) => {
-    const heading = new RegExp('^#{1,6}\\s+.*' + esc(h), 'im').test(md || '');
+    const heading = new RegExp('^#{1,6}\\s+.*' + headRe(h), 'im').test(md || '');
     return !(heading && (kw || []).every((k) => low.includes(String(k).toLowerCase())));
   }).map(([h, kw]) => `heading "${h}"` + ((kw || []).length ? ` with keywords: ${kw.join(', ')}` : ''));
 }
