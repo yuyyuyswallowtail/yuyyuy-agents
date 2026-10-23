@@ -10,6 +10,9 @@ PAIRS = [
   "      const why = []; const tb = pick(secs, 'TASKS'); let arr = null;\n      if (tb == null) why.push('TASKS section is missing: add a <<<TASKS>>> header line followed by the JSON array');\n      else { try { arr = JSON.parse(unfence(tb)); } catch (e) { why.push('TASKS is not valid JSON (' + e.message + ')'); } }\n      const tasks = arr == null ? null : validateTasks(arr, root, part.role, part.slice, why);"),
  ("only in: ${LAYER_HELP[part.role]}`);\n      const claimed",
   "only in: ${LAYER_HELP[part.role]}` + (why.length ? `\\nWhy your previous TASKS was rejected:\\n- ${why.slice(0, 6).join('\\n- ')}` : ''));\n      const claimed"),
+ ("requireTests: true, vision: 'auto' }", "requireTests: true, vision: 'auto', softGate: false }"),
+ ("      sc.fb = {};\n      if (!approve) {\n        scRoleLines(fb)",
+  "      sc.fb = {};\n      if (!approve && cfg.softGate && sc.iter >= cfg.maxPlan && !bad.length) { approve = true; S.warn.push(`gate: soft-approved at the last iteration (softGate); the PM still wanted: ${clip(fb, 200)}`); fb = 'soft-approved after ' + sc.iter + ' rejections. ' + fb; }\n      if (!approve) {\n        scRoleLines(fb)"),
 ]
 n = 0
 for node in wf['nodes']:

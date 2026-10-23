@@ -20,7 +20,7 @@ function scrumInit(S) {
 
 // 'auto' lets qa-tools.sh decide from what is installed; true/false force it
 const scFlag = (v) => (v === 'auto' || v === undefined ? 'auto' : (v ? 1 : 0));
-const scCfg = (S) => Object.assign({ maxPlan: 3, maxRev: 2, maxProbe: 2, maxFinal: 2, maxSprints: 0, onBlocked: 'stop', qaMutation: 'auto', qaE2e: 'auto', e2eBlocking: false, requireTests: true, vision: 'auto' }, S.cfg.scrum || {});
+const scCfg = (S) => Object.assign({ maxPlan: 3, maxRev: 2, maxProbe: 2, maxFinal: 2, maxSprints: 0, onBlocked: 'stop', qaMutation: 'auto', qaE2e: 'auto', e2eBlocking: false, requireTests: true, vision: 'auto', softGate: false }, S.cfg.scrum || {});
 
 // load the bundle of one role (ctx.sh) before a step that needs its prompts, scope, skills and snapshot
 function scNeed(S, role, step) {
@@ -498,6 +498,7 @@ function scrumAbsorb(S, text, err) {
       const bad = sp.parts.filter((p) => !sc.plans[p.key] || sc.plans[p.key].failed);
       if (bad.length) { approve = false; fb += '\n' + bad.map((p) => `${p.role}: no valid plan for ${p.slice}: produce MD and TASKS`).join('\n'); }
       sc.fb = {};
+      if (!approve && cfg.softGate && sc.iter >= cfg.maxPlan && !bad.length) { approve = true; S.warn.push(`gate: soft-approved at the last iteration (softGate); the PM still wanted: ${clip(fb, 200)}`); fb = 'soft-approved after ' + sc.iter + ' rejections. ' + fb; }
       if (!approve) {
         scRoleLines(fb).forEach((l) => { sc.fb[l.role] = ((sc.fb[l.role] || '') + ' ' + l.text).trim(); });
         let redo = sp.parts.filter((p) => sc.fb[p.role]).map((p) => p.key);
