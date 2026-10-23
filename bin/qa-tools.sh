@@ -4,8 +4,11 @@
 #   <tail of the output>
 # The engine parses the blocks; the Product Manager judges them. A tool that is not installed is SKIPPED, not failed.
 # Tools: pint (style), larastan/phpstan (static analysis), pest via artisan (unit + feature + arch tests),
-#        composer audit (known CVEs), hygiene (changed files only: debug calls, strict_types, layer rules).
-# Optional (off by default, need a coverage driver): QA_MUTATION=1 runs `pest --mutate --covered-only`.
+#        composer audit (known CVEs), hygiene (changed files only: debug calls, strict_types, layer rules),
+#        tests-added (code changed but no test file changed), css (broken design tokens), security (patterns),
+#        mutation (pest --mutate), e2e (Playwright).
+# Env: QA_MUTATION=auto|1|0 (auto: only with pcov/xdebug), QA_E2E=auto|1|0 (auto: only when Playwright is set up),
+#      QA_E2E_BLOCKING=1 (a failing E2E run blocks), QA_REQUIRE_TESTS=1|0 (default 1).
 # usage: qa-tools.sh <absolute repo root>
 set -uo pipefail
 
@@ -35,7 +38,21 @@ if [ -f artisan ]; then block tests 1 "" -- php artisan test --compact; else ski
 
 if command -v composer >/dev/null 2>&1; then block audit 0 "advisory (needs network)" -- composer audit --no-interaction; else skip audit "composer not found"; fi
 
-if [ "${QA_MUTATION:-0}" = "1" ] && [ -x vendor/bin/pest ]; then block mutation 0 "advisory" -- vendor/bin/pest --mutate --covered-only; fi
+mut="${QA_MUTATION:-auto}"
+if [ -x vendor/bin/pest ]; then
+  drv=""; php -m 2>/dev/null | grep -qiE '^(pcov|xdebug)$' && drv=1
+  if [ "$mut" = "1" ] || { [ "$mut" = "auto" ] && [ -n "$drv" ]; }; then block mutation 0 "advisory" -- vendor/bin/pest --mutate --covered-only
+  elif [ "$mut" = "auto" ]; then skip mutation "no coverage driver (pcov or xdebug)"; fi
+fi
+
+e2e="${QA_E2E:-auto}"
+if [ "$e2e" != "0" ]; then
+  pwcfg=""; for f in playwright.config.ts playwright.config.js playwright.config.mjs; do [ -f "$f" ] && pwcfg="$f" && break; done
+  if [ -n "$pwcfg" ] && [ -x node_modules/.bin/playwright ]; then
+    blk=0; [ "${QA_E2E_BLOCKING:-0}" = "1" ] && blk=1
+    block e2e "$blk" "playwright $pwcfg" -- node_modules/.bin/playwright test --reporter=line
+  else skip e2e "playwright is not set up (run bin/e2e-scaffold.sh <root> --install)"; fi
+fi
 
 # hygiene: only files changed in this sprint (modified + untracked), so pre-existing starter-kit code never fails the gate
 HYG="$(mktemp)"; trap 'rm -f "$HYG"' EXIT
@@ -55,5 +72,57 @@ if [ -s "$HYG" ]; then
   head -n 30 "$HYG"
 else
   printf '@@ hygiene exit=0 blocking=1 %s changed php files checked\n' "$(printf '%s' "$changed" | grep -c . || true)"
+fi
+# tests-added: code of a layer that must be tested changed in this sprint, yet no test file changed
+suggest() { # app/<Layer>/<Name>.php -> the test file that should exist
+  local f="$1" cls; cls="$(basename "$f" .php)"
+  case "$f" in
+    app/Livewire/*) echo "tests/Feature/Livewire/${cls}Test.php" ;;
+    app/Http/Controllers/*) echo "tests/Feature/${cls}Test.php" ;;
+    app/*/*) echo "tests/Unit/$(printf '%s' "$f" | cut -d/ -f2)/${cls}Test.php" ;;
+  esac
+}
+src=""
+if [ -n "$changed" ]; then
+  while IFS= read -r f; do
+    case "$f" in
+      app/Services/*|app/Repositories/*|app/DTOs/*|app/Validators/*|app/Policies/*|app/Support/*|app/Jobs/*|app/Http/Controllers/*|app/Livewire/*)
+        case "$f" in *Interface.php|*Provider.php) ;; *) src="$src$f"$'\n' ;; esac ;;
+    esac
+  done <<< "$changed"
+fi
+src="$(printf '%s' "$src" | grep . || true)"
+tests_changed="$(git ls-files -m -o --exclude-standard tests 2>/dev/null | grep -cE '\.(php|ts|js)$' || true)"
+if [ "${QA_REQUIRE_TESTS:-1}" = "1" ] && [ -n "$src" ] && [ "${tests_changed:-0}" = "0" ]; then
+  printf '@@ tests-added exit=1 blocking=1 %s source file(s) changed and no test file added\n' "$(printf '%s\n' "$src" | wc -l | tr -d ' ')"
+  printf '%s\n' "$src" | head -n 6 | while IFS= read -r f; do printf '%s: write a Pest test for the public behaviour of %s\n' "$(suggest "$f")" "$f"; done
+else
+  printf '@@ tests-added exit=0 blocking=1 %s source file(s), %s test file(s) changed\n' "$(printf '%s' "$src" | grep -c . || true)" "${tests_changed:-0}"
+fi
+
+# css: design tokens written by a small model are the most likely to be invalid
+css_changed="$(git ls-files -m -o --exclude-standard resources 2>/dev/null | grep -E '\.css$' || true)"
+if [ -n "$css_changed" ]; then
+  if command -v node >/dev/null 2>&1 && [ -f "$(dirname "$0")/css-check.js" ]; then
+    CSSOUT="$(printf '%s\n' "$css_changed" | xargs node "$(dirname "$0")/css-check.js" 2>&1 || true)"
+    if [ -n "$CSSOUT" ]; then printf '@@ css exit=1 blocking=1 %s changed css file(s)\n%s\n' "$(printf '%s\n' "$css_changed" | wc -l | tr -d ' ')" "$CSSOUT"
+    else printf '@@ css exit=0 blocking=1 %s changed css file(s) checked\n' "$(printf '%s\n' "$css_changed" | wc -l | tr -d ' ')"; fi
+  else skip css "node or css-check.js missing"; fi
+fi
+
+# security: severe patterns block, risky ones are advisory (reviewed by the PM)
+SEV="$(mktemp)"; ADV="$(mktemp)"; trap 'rm -f "$HYG" "$SEV" "$ADV"' EXIT
+sec_files="$(git ls-files -m -o --exclude-standard app routes resources 2>/dev/null | grep -E '\.(php|blade\.php)$' || true)"
+if [ -n "$sec_files" ]; then
+  while IFS= read -r f; do
+    [ -f "$f" ] || continue
+    grep -nE '(^|[^A-Za-z0-9_>:$])(eval|unserialize|shell_exec|passthru|proc_open|popen|system|exec)\(|DB::unprepared\(' "$f" | sed "s#^#$f: #" | head -n 3 >> "$SEV"
+    grep -nE '\{!!' "$f" | sed "s#^#$f: unescaped output {!! !!} (XSS risk unless the value is trusted): #" | head -n 2 >> "$ADV"
+    grep -nE '(whereRaw|selectRaw|orderByRaw|havingRaw|DB::raw)\([^)]*\$' "$f" | sed "s#^#$f: raw SQL with a variable (use bindings): #" | head -n 2 >> "$ADV"
+    grep -nE '(create|update|fill)\(\$request->all\(\)\)' "$f" | sed "s#^#$f: mass assignment from the whole request: #" | head -n 2 >> "$ADV"
+  done <<< "$sec_files"
+  if [ -s "$SEV" ]; then printf '@@ security exit=1 blocking=1 dangerous function in changed code\n'; head -n 20 "$SEV"
+  elif [ -s "$ADV" ]; then printf '@@ security exit=1 blocking=0 risky patterns to review\n'; head -n 20 "$ADV"
+  else printf '@@ security exit=0 blocking=1 %s changed files scanned\n' "$(printf '%s\n' "$sec_files" | wc -l | tr -d ' ')"; fi
 fi
 exit 0

@@ -29,5 +29,6 @@
  {"id":"06A-logs-monitoring","parts":{"backend":["06A-logs-monitoring"]}},
  {"id":"06B-settings","parts":{"backend":["06B-settings"],"uiux":["15B-logs-settings-ui"],"frontend":["15B-logs-settings-ui"],"qa":["20B-unit-content","21B-feature-content"]}},
  {"id":"07-security-hardening","parts":{"backend":["07-security-hardening"],"qa":["22-lint-static"]}},
- {"id":"07A-docs-release","parts":{"backend":["07A-docs-release"],"qa":["23-security-review"]}}
+ {"id":"07A-docs-release","parts":{"backend":["07A-docs-release"],"qa":["23-security-review"]}},
+ {"id":"08-e2e-playwright","parts":{"qa":["24-e2e-playwright"]}}
 ]

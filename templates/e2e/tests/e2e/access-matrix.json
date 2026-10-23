@@ -1,0 +1,4 @@
+{
+  "/login": { "guest": true, "*": true },
+  "/dashboard": { "guest": false, "*": true }
+}

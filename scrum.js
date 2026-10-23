@@ -18,7 +18,9 @@ function scrumInit(S) {
   S.sc = { si: 0, finished: 0, sprints: [], written: [], failed: [], stats: { shipped: [], parked: [], gitFailed: [], gaps: [], lessons: [], planIter: {}, skipped: [], resumed: [] } };
 }
 
-const scCfg = (S) => Object.assign({ maxPlan: 3, maxRev: 2, maxProbe: 2, maxFinal: 2, maxSprints: 0, onBlocked: 'stop', qaMutation: false }, S.cfg.scrum || {});
+// 'auto' lets qa-tools.sh decide from what is installed; true/false force it
+const scFlag = (v) => (v === 'auto' || v === undefined ? 'auto' : (v ? 1 : 0));
+const scCfg = (S) => Object.assign({ maxPlan: 3, maxRev: 2, maxProbe: 2, maxFinal: 2, maxSprints: 0, onBlocked: 'stop', qaMutation: 'auto', qaE2e: 'auto', e2eBlocking: false, requireTests: true }, S.cfg.scrum || {});
 
 // load the bundle of one role (ctx.sh) before a step that needs its prompts, scope, skills and snapshot
 function scNeed(S, role, step) {
@@ -308,7 +310,7 @@ function scrumRoute(S) {
       return null;
     }
     case 'sc_impl_done': scStatus(S, 'review', 'sc_qa_run'); return null;
-    case 'sc_qa_run': return execCmd(S, `${cfg.qaMutation ? 'env QA_MUTATION=1 ' : ''}bash ${bin}/qa-tools.sh ${root}`);
+    case 'sc_qa_run': return execCmd(S, `env QA_MUTATION=${scFlag(cfg.qaMutation)} QA_E2E=${scFlag(cfg.qaE2e)} QA_E2E_BLOCKING=${cfg.e2eBlocking ? 1 : 0} QA_REQUIRE_TESTS=${cfg.requireTests ? 1 : 0} bash ${bin}/qa-tools.sh ${root}`);
 
     case 'sc_final':
       if (scNeed(S, 'pm', 'sc_final')) return null;
@@ -448,6 +450,9 @@ function scrumAbsorb(S, text, err) {
       const claimed = scClaimed(S, part); const conflicts = [];
       if (cur.tasks) cur.tasks.forEach((t) => t.files.forEach((f) => { if (claimed[f]) conflicts.push(`${f} (owned by ${claimed[f]})`); }));
       conflicts.forEach((c) => missing.push(`file already owned by a peer part, remove it or use "reads": ${c}`));
+      if (cfg.requireTests && (part.role === 'backend' || part.role === 'frontend') && cur.tasks && !cur.tasks.some((t) => t.files.some((f) => /\/tests\/[^/]+\/.*\.php$/.test(f) || /\/tests\/.*\.(spec|test)\.[jt]s$/.test(f)))) {
+        missing.push(`TASKS must include at least one TEST task: a Pest file for the behaviour you add (${part.role === 'backend' ? 'tests/Unit/<Layer>/<Name>Test.php' : 'tests/Feature/Livewire/<Name>Test.php'}); the exact class and method names come from your own plan`);
+      }
       sc.missing = missing;
       if (missing.length && sc.revs < cfg.maxRev) { sc.revs++; return S; } // same step: the router asks again for the gaps only
       const dropped = [];
