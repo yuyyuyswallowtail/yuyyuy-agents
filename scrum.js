@@ -20,7 +20,7 @@ function scrumInit(S) {
 
 // 'auto' lets qa-tools.sh decide from what is installed; true/false force it
 const scFlag = (v) => (v === 'auto' || v === undefined ? 'auto' : (v ? 1 : 0));
-const scCfg = (S) => Object.assign({ maxPlan: 3, maxRev: 2, maxProbe: 2, maxFinal: 2, maxSprints: 0, onBlocked: 'stop', qaMutation: 'auto', qaE2e: 'auto', e2eBlocking: false, requireTests: true }, S.cfg.scrum || {});
+const scCfg = (S) => Object.assign({ maxPlan: 3, maxRev: 2, maxProbe: 2, maxFinal: 2, maxSprints: 0, onBlocked: 'stop', qaMutation: 'auto', qaE2e: 'auto', e2eBlocking: false, requireTests: true, vision: 'auto' }, S.cfg.scrum || {});
 
 // load the bundle of one role (ctx.sh) before a step that needs its prompts, scope, skills and snapshot
 function scNeed(S, role, step) {
@@ -208,6 +208,17 @@ function mergeMd(old, add, missing) {
   return out.map((x) => x.replace(/\s+$/, '')).join('\n\n');
 }
 
+// Vision review (gemma3): the newest E2E screenshots are sent as OpenAI-style image_url parts.
+function chatVision(system, user, images, max, temp) {
+  const content = [{ type: 'text', text: user }].concat(images.map((im) => ({ type: 'image_url', image_url: { url: `data:${im.mime};base64,${im.b64}` } })));
+  return { model: 'local', messages: [{ role: 'system', content: system }, { role: 'user', content }], max_tokens: max, temperature: temp, stream: false };
+}
+const SC_VISION_SYSTEM = 'You review screenshots of a web application against its design specification. Reply ONLY with lines, one per screenshot or problem: "OK <file>" when it matches, or "ISSUE <file>: <one short, concrete problem>". Look for: wrong palette or fonts, overlapping or clipped text, missing empty/loading/error states, low contrast, raw error pages or debug output, broken layout on the page width. At most 6 lines. Do not invent problems you cannot see.';
+function scVisionUser(S) {
+  const sc = S.sc; const ui = sc.sp.parts.filter((p) => p.role === 'uiux').map((p) => sc.plans[p.key]).filter((pl) => pl && pl.md).map((pl) => clip(pl.md, 1500)).join('\n');
+  return `SPRINT ${sc.sp.id} - ${sc.sp.title}\nDESIGN SPEC:\n${ui || '(none for this sprint: judge general quality)'}\n\nSCREENSHOTS (in this order): ${sc.shots.map((x) => x.path).join(', ')}`;
+}
+
 function scrumRoute(S) {
   const sc = S.sc; const cfg = scCfg(S); const root = S.cfg.root; const bin = S.cfg.bin; const sp = sc.sp;
   switch (S.step) {
@@ -312,6 +323,12 @@ function scrumRoute(S) {
     case 'sc_impl_done': scStatus(S, 'review', 'sc_qa_run'); return null;
     case 'sc_qa_run': return execCmd(S, `env QA_MUTATION=${scFlag(cfg.qaMutation)} QA_E2E=${scFlag(cfg.qaE2e)} QA_E2E_BLOCKING=${cfg.e2eBlocking ? 1 : 0} QA_REQUIRE_TESTS=${cfg.requireTests ? 1 : 0} bash ${bin}/qa-tools.sh ${root}`);
 
+    case 'sc_vision': return execCmd(S, `php ${bin}/shots.php ${root} 3 450000`);
+    case 'sc_vision_call':
+      S.action = 'gemma';
+      S.req = chatVision(SC_VISION_SYSTEM, scVisionUser(S), sc.shots, 500, 0.2);
+      sc.shotNames = sc.shots.map((x) => x.path); delete sc.shots;
+      return S;
     case 'sc_final':
       if (scNeed(S, 'pm', 'sc_final')) return null;
       S.agent = 'pm'; S.scopeKey = sp.id; S.afterRecall = 'sc_final_call'; S.step = 'recall';
@@ -502,8 +519,23 @@ function scrumAbsorb(S, text, err) {
     case 'sc_qa_run':
       sc.qa = scParseQa(text);
       if (!sc.qa.length) S.warn.push('qa-tools.sh returned no tool blocks' + (err ? ': ' + err : ''));
+      S.step = cfg.vision === false ? 'sc_final' : 'sc_vision';
+      return S;
+
+    case 'sc_vision': {
+      let shots = []; try { shots = JSON.parse(String(text || '').trim()); } catch (e) { shots = []; }
+      sc.shots = (Array.isArray(shots) ? shots : []).filter((x) => x && x.b64 && x.path).slice(0, 3);
+      S.step = sc.shots.length ? 'sc_vision_call' : 'sc_final';
+      return S;
+    }
+    case 'sc_vision_call': {
+      S.req = null;
+      const issues = String(text || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => /^ISSUE\s/i.test(l)).slice(0, 6);
+      if (err || !String(text || '').trim()) S.warn.push('vision review returned nothing' + (err ? ': ' + err : ''));
+      else sc.qa.push({ name: 'vision', exit: issues.length ? 1 : 0, blocking: false, note: 'advisory (gemma3 on ' + (sc.shotNames || []).length + ' screenshot(s))', skipped: false, out: issues.join('\n') });
       S.step = 'sc_final';
       return S;
+    }
 
     case 'sc_final_call': {
       const secs = sections(text); const vt = pick(secs, 'VERDICT') || ''; const fbText = pick(secs, 'FEEDBACK') || '';

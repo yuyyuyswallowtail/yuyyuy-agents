@@ -21,7 +21,7 @@ export async function login(page: Page, u: E2eUser): Promise<void> {
 // Full-page screenshots feed the vision review (gemma3) and human reviewers.
 export async function shot(page: Page, role: string, slug: string): Promise<void> {
   mkdirSync('storage/e2e-screens', { recursive: true });
-  await page.screenshot({ path: `storage/e2e-screens/${role}-${slug}.png`, fullPage: true });
+  await page.screenshot({ path: `storage/e2e-screens/${role}-${slug}.jpg`, type: 'jpeg', quality: 55, fullPage: true });
 }
 
 export { test, expect };

@@ -1,0 +1,10 @@
+[Unit]
+Description=llama.cpp gemma3 vision (:9995), started on demand by llama-proxy
+
+[Service]
+Type=simple
+ExecCondition=/bin/sh -c '! ss -ltnH "sport = :9995" | grep -q .'
+ExecStart=%h/LLM/scripts/run-gemma3-9995.sh
+Restart=no
+StandardOutput=append:%h/LLM/logs/gemma3.log
+StandardError=append:%h/LLM/logs/gemma3.log

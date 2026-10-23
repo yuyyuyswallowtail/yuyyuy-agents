@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """On-demand model switcher + proxy for llama.cpp.
 
-Only one heavy model (deepseek, qwen-coder or meta-llama) runs at a time; the
+Only one heavy model (deepseek, qwen-coder, meta-llama or gemma3) runs at a time; the
 memory model (ministral) is never touched. Requests to a proxy port start that
 model first and stop the other heavy ones.
 
   deepseek    proxy :9899 -> llama-server :9999
   qwen-coder  proxy :9898 -> llama-server :9998
   meta-llama  proxy :9897 -> llama-server :9996
+  gemma3      proxy :9896 -> llama-server :9995  (vision)
 """
 import http.client, json, os, re, signal, sqlite3, subprocess, sys, threading, time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -20,6 +21,7 @@ MODELS = {
     "deepseek":   {"proxy": 9899, "port": 9999, "unit": "llama-deepseek.service"},
     "qwen-coder": {"proxy": 9898, "port": 9998, "unit": "llama-qwen-coder.service"},
     "meta-llama": {"proxy": 9897, "port": 9996, "unit": "llama-meta-llama.service"},
+    "gemma3":     {"proxy": 9896, "port": 9995, "unit": "llama-gemma3.service"},
 }
 
 cond = threading.Condition()

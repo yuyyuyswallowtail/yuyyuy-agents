@@ -4,6 +4,9 @@ import copy, json, os
 LLAMA = "Meta-Llama"
 LLAMA_DIRECT = ":9996/"   # llama-server port (same style as DeepSeek :9999 and Qwen :9998)
 LLAMA_PROXY = ":9897/"    # model-proxy port, applied by apply-proxy.py
+GEMMA = "Gemma Vision"
+GEMMA_DIRECT = ":9995/"   # gemma-3-4b-it with its mmproj (screenshot review)
+GEMMA_PROXY = ":9896/"
 
 # cfg.scrum is read by engine.js; set "enabled": False to run the legacy backend > frontend > qa flow
 SCRUM_CFG = {
@@ -19,6 +22,7 @@ SCRUM_CFG = {
     "qaE2e": "auto",        # Playwright E2E: auto = only when playwright.config.* and @playwright/test are installed
     "e2eBlocking": False,   # True: a failing E2E run forces the PM to reject
     "requireTests": True,   # backend/frontend plans must contain a test task
+    "vision": "auto",       # gemma3 reviews E2E screenshots when they exist; False turns it off
 }
 
 
@@ -28,19 +32,19 @@ def load_engine(base):
     return "\n\n".join(parts)
 
 
-def ensure_llama(wf):
-    """Add the Meta-Llama HTTP node, a 'llama' output on the Route switch and its connection to Absorb (idempotent)."""
+def _ensure_model(wf, name, key, node_id, proxy, direct):
+    """Add an HTTP node for one more llama.cpp model, a Route output for it and its connection to Absorb (idempotent)."""
     nodes = {n["name"]: n for n in wf["nodes"]}
     for need in ("Qwen Coder", "Route", "Absorb"):
         assert need in nodes, f"node '{need}' not found in the workflow"
-    if LLAMA not in nodes:
+    if name not in nodes:
         donor = nodes["Qwen Coder"]
         n = copy.deepcopy(donor)
-        n["id"], n["name"] = "meta-llama", LLAMA
+        n["id"], n["name"] = node_id, name
         n["position"] = [donor["position"][0], max(x["position"][1] for x in wf["nodes"]) + 180]
         url = donor["parameters"]["url"]
-        n["parameters"]["url"] = url.replace(":9898/", LLAMA_PROXY).replace(":9998/", LLAMA_DIRECT)
-        assert LLAMA_PROXY in n["parameters"]["url"] or LLAMA_DIRECT in n["parameters"]["url"], f"unexpected Qwen url: {url}"
+        n["parameters"]["url"] = url.replace(":9898/", proxy).replace(":9998/", direct)
+        assert proxy in n["parameters"]["url"] or direct in n["parameters"]["url"], f"unexpected Qwen url: {url}"
         n.pop("credentials", None)
         wf["nodes"].append(n)
     route = nodes["Route"]
@@ -54,20 +58,26 @@ def ensure_llama(wf):
     def is_rule(v, key):
         return v.get("outputKey") == key or cond_value(v) == key
 
-    if not any(is_rule(v, "llama") for v in values):
+    if not any(is_rule(v, key) for v in values):
         donor_rule = next((v for v in values if is_rule(v, "qwen")), values[0])
         rule = copy.deepcopy(donor_rule)
-        rule["conditions"]["conditions"][0]["id"] = "llama"
-        rule["conditions"]["conditions"][0]["rightValue"] = "llama"
+        rule["conditions"]["conditions"][0]["id"] = key
+        rule["conditions"]["conditions"][0]["rightValue"] = key
         rule["renamedOutput"] = True
-        rule["outputKey"] = "llama"
+        rule["outputKey"] = key
         values.append(rule)
     C = wf["connections"]
     main = C["Route"]["main"]
     while len(main) < len(values):
         main.append([])
-    idx = next(i for i, v in enumerate(values) if is_rule(v, "llama"))
-    if not any(l["node"] == LLAMA for l in main[idx]):
-        main[idx] = [{"node": LLAMA, "type": "main", "index": 0}]
-    C[LLAMA] = {"main": [[{"node": "Absorb", "type": "main", "index": 0}]]}
+    idx = next(i for i, v in enumerate(values) if is_rule(v, key))
+    if not any(l["node"] == name for l in main[idx]):
+        main[idx] = [{"node": name, "type": "main", "index": 0}]
+    C[name] = {"main": [[{"node": "Absorb", "type": "main", "index": 0}]]}
     return wf
+
+
+def ensure_llama(wf):
+    """Everything the scrum flow adds to the workflow: the Meta-Llama node and the Gemma Vision node (idempotent)."""
+    _ensure_model(wf, LLAMA, "llama", "meta-llama", LLAMA_PROXY, LLAMA_DIRECT)
+    return _ensure_model(wf, GEMMA, "gemma", "gemma-vision", GEMMA_PROXY, GEMMA_DIRECT)

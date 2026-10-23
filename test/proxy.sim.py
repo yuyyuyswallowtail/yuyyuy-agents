@@ -12,10 +12,11 @@ spec = importlib.util.spec_from_file_location("mp", os.path.join(os.path.dirname
 mp = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(mp)
 
-assert set(mp.MODELS) == {"deepseek", "qwen-coder", "meta-llama"}, mp.MODELS
+assert set(mp.MODELS) == {"deepseek", "qwen-coder", "meta-llama", "gemma3"}, mp.MODELS
 assert mp.MODELS["deepseek"]["proxy"] == 9899 and mp.MODELS["deepseek"]["port"] == 9999
 assert mp.MODELS["qwen-coder"]["proxy"] == 9898 and mp.MODELS["qwen-coder"]["port"] == 9998
 assert mp.MODELS["meta-llama"]["proxy"] == 9897 and mp.MODELS["meta-llama"]["port"] == 9996
+assert mp.MODELS["gemma3"]["proxy"] == 9896 and mp.MODELS["gemma3"]["port"] == 9995
 
 lock = threading.Lock()
 live = {n: 0 for n in mp.MODELS}
@@ -60,7 +61,7 @@ def call(name):
     r = c.getresponse(); data = json.loads(r.read()); c.close()
     assert r.status == 200 and data["choices"][0]["message"]["content"] == "ok " + name, (name, r.status, data)
 
-order = ["deepseek", "qwen-coder", "meta-llama"] * 12
+order = ["deepseek", "qwen-coder", "meta-llama", "gemma3"] * 9
 random.seed(7); random.shuffle(order)
 ts = [threading.Thread(target=call, args=(n,)) for n in order]
 t0 = time.time()

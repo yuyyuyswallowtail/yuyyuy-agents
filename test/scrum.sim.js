@@ -61,10 +61,15 @@ function run(name, opts) {
   const fake = (S) => {
     const sys = S.req.messages[0].content, usr = S.req.messages[1].content, root = fx.root;
     const reply = (c) => ({ choices: [{ message: { content: c }, finish_reason: 'stop' }] });
+    if (S.action === 'gemma') {
+      const c = S.req.messages[1].content; calls.gemma = (calls.gemma || 0) + 1;
+      assert(Array.isArray(c) && c.some((x) => x.type === 'image_url' && /^data:image\/jpeg;base64,/.test(x.image_url.url)), 'vision request must carry the screenshots');
+      return reply('OK storage/e2e-screens/other.jpg\nISSUE storage/e2e-screens/admin-dashboard.jpg: accent color is not coral');
+    }
     if (S.action === 'ministral') return reply(S.step === 'brief' ? 'NONE' : 'recorded: ' + usr.split('\n')[0].slice(0, 80));
     if (/^MODE: KICKOFF/.test(usr)) return reply('<<<GOAL>>>\nThe feature works.\n<<<CRITERIA>>>\nbackend: query kit works\nui/ux: tokens documented\nfrontend: button renders\ndatabase: users table exists\n<<<RISKS>>>\n- none\n<<<MEMORY>>>\nkickoff ok');
     if (/^MODE: GATE/.test(usr)) { const g = opts.gates[calls.gate++] || 'APPROVE'; return reply(g === 'APPROVE' ? '<<<VERDICT>>>\nAPPROVE\n<<<FEEDBACK>>>\nfine\n<<<MEMORY>>>\napproved' : `<<<VERDICT>>>\nREJECT\n<<<FEEDBACK>>>\n${g.replace(/^REJECT /, '')}\n<<<MEMORY>>>\nrejected`); }
-    if (/^MODE: FINAL/.test(usr)) { calls.final++; return reply('<<<VERDICT>>>\nAPPROVE\n<<<FEEDBACK>>>\nok\n<<<LESSON>>>\nLESSON: always run hygiene\n<<<GAP>>>\nlaravel/framework: sample rule\n<<<MEMORY>>>\nfinal ok'); }
+    if (/^MODE: FINAL/.test(usr)) { calls.final++; calls.finalUsr = usr; return reply('<<<VERDICT>>>\nAPPROVE\n<<<FEEDBACK>>>\nok\n<<<LESSON>>>\nLESSON: always run hygiene\n<<<GAP>>>\nlaravel/framework: sample rule\n<<<MEMORY>>>\nfinal ok'); }
     if (/^MODE: RETRO/.test(usr)) return reply('<<<RETRO>>>\nshipped it\n<<<NEXT>>>\nQueryParams lives in app/Support\n<<<MEMORY>>>\nretro ok');
     if (S.step === 'plan_docs' || S.step === 'revise') {
       const f = `${root}/app/Support/QueryParams.php`; calls.plan.push('legacy:' + S.agent);
@@ -104,7 +109,7 @@ function run(name, opts) {
   return { S, fx, trace, calls, summary: E.summary(S) };
 }
 const git = (fx, c) => sh(c, fx.root, fx.env).stdout.trim();
-const heavy = (t) => t.filter((a) => ['deepseek', 'qwen', 'llama'].includes(a));
+const heavy = (t) => t.filter((a) => ['deepseek', 'qwen', 'llama', 'gemma'].includes(a));
 const swaps = (t) => heavy(t).filter((a, i, l) => i && a !== l[i - 1]).length;
 const rows = (fx, q) => sh(`sqlite3 "${fx.env.AGENT_DB}" "${q}"`, fx.tmp, fx.env).stdout.trim();
 let ok = 0; const pass = (m) => { ok++; console.log('  ok -', m); };
@@ -121,6 +126,7 @@ console.log('A) database-only sprint, happy path');
   assert(rows(r.fx, "select count(*) from memory where scope='global' and kind in ('handoff','lesson')") >= 2); pass('handoff + lesson stored as global memory');
   const seq = heavy(r.trace).filter((a, k, l) => !k || a !== l[k - 1]); assert.deepStrictEqual(seq, ['llama', 'deepseek', 'llama', 'deepseek', 'llama'], seq.join()); pass('model order kickoff(llama) > plan+gate(deepseek) > write(llama) > final(deepseek) > retro(llama): ' + (seq.length - 1) + ' swaps')
   assert(git(r.fx, 'git rev-parse --abbrev-ref HEAD') === 'feat/00A-schema-identity'); pass('HEAD on the shipped feature branch (next sprint stacks on it)');
+  assert(!r.trace.includes('gemma') && !r.calls.gemma); pass('no screenshots: the vision model is never loaded');
 }
 
 console.log('B) mixed sprint: probe, partial gate rejection, hygiene override + fix round');
@@ -180,5 +186,14 @@ console.log('G) planners never add tests: the QA gate blocks, the engine asks qa
   assert.strictEqual(r.calls.final, 2, 'final rounds ' + r.calls.final); pass('PM approved but tests-added failed: forced a fix round');
   assert(r.calls.code.some((c) => c.startsWith('llama:QueryParamsTest.php')), r.calls.code.join()); pass('the qa writer (llama) created tests/Unit/Support/QueryParamsTest.php');
   assert(git(r.fx, 'git ls-files tests | grep -c QueryParamsTest') === '1'); pass('the test file is part of the shipped branch');
+}
+console.log('H) E2E screenshots exist: gemma3 reviews them and the PM sees the findings (advisory)');
+{
+  const pre = (fx) => { const d = path.join(fx.root, 'storage/e2e-screens'); fs.mkdirSync(d, { recursive: true }); fs.writeFileSync(path.join(d, 'admin-dashboard.jpg'), Buffer.from('/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////', 'base64')); };
+  const r = run('H', { only: ['00A'], gates: ['APPROVE'], pre }); const s = r.summary;
+  assert.deepStrictEqual(s.shipped, ['00A-schema-identity'], JSON.stringify(s)); assert.strictEqual(r.calls.gemma, 1); pass('one vision call with the screenshot attached, run shipped (findings are advisory, not blocking)');
+  assert(/vision: FAIL exit 1 \(advisory\)/.test(r.calls.finalUsr) && /accent color is not coral/.test(r.calls.finalUsr)); pass('the PM FINAL prompt contains the vision finding');
+  const seq = heavy(r.trace).filter((a, k, l) => !k || a !== l[k - 1]); assert.deepStrictEqual(seq, ['llama', 'deepseek', 'llama', 'gemma', 'deepseek', 'llama'], seq.join()); pass('model order: ' + seq.join(' > '));
+  assert(!JSON.stringify(r.S).includes('/9j/4AAQ'), 'image data must not stay in the state'); pass('image data is dropped from the run state after the review');
 }
 console.log(`\nSCRUM_SIM_OK (${ok} checks)`);
