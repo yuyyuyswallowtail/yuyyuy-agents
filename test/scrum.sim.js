@@ -77,6 +77,11 @@ function run(name, opts) {
       if (opts.probeOnce && role === 'backend') assert(/VERIFIED FACTS/.test(usr) && /probe: grep QueryParams app/.test(usr), 'probe facts must reach the planner');
       if (opts.fbCheck && role === 'frontend' && S.sc.iter === 2) assert(/PM FEEDBACK YOU MUST FIX/.test(usr) && /use the token/.test(usr), 'feedback must reach the redone part');
       const files = FILES(slice, sprint)[role].map((f) => `${root}/${f}`);
+      if (opts.braceOnce && role === 'backend') {
+        const nth = calls.plan.filter((k) => k.startsWith(key)).length;
+        if (nth === 1) { assert(/never braces/.test(usr), 'plan prompt must forbid brace paths'); return reply(`<<<MD>>>\n${HEAD}\n<<<TASKS>>>\n${JSON.stringify([{ id: 't1', title: 'x', files: [`${root}/app/{Models,Enums}`], reads: [], instruction: 'do it', checks: [] }])}\n<<<CODER>>>\nx\n<<<MEMORY>>>\nbad paths`); }
+        if (nth === 2) { assert(/Why your previous TASKS was rejected/.test(usr) && /rejected file/.test(usr) && /app\/\{Models,Enums\}/.test(usr), 'revision must say why TASKS was rejected'); calls.reasons = true; }
+      }
       const task = { id: 't1', title: role + ' work', files, reads: [], instruction: 'do it', checks: files.filter((f) => f.endsWith('.php')).map((f) => 'php -l ' + f) };
       return reply(`<<<MD>>>\n${HEAD}\n<<<TASKS>>>\n${JSON.stringify([task])}\n<<<CODER>>>\nuse exact names\n<<<MEMORY>>>\nplanned ${key}`);
     }
@@ -160,4 +165,11 @@ console.log('E) resume: a sprint whose plan docs already exist skips kickoff, pl
   assert.deepStrictEqual(s.resumed, ['00A-schema-identity']); assert.deepStrictEqual(s.shipped, ['00A-schema-identity'], JSON.stringify(s)); pass('resumed from docs and shipped');
   assert.strictEqual(r.calls.plan.length, 0); assert.strictEqual(r.calls.gate, 0); assert(!heavy(r.trace).includes('deepseek') || r.calls.final === 1); pass('no planning, no gate; only implementation + final + retro ran: ' + heavy(r.trace).join('>'));
 }
+console.log('I) brace paths in TASKS: the revision tells the planner exactly why it was rejected');
+{
+  const r = run('I', { only: ['00D'], gates: ['APPROVE'], braceOnce: true }); const s = r.summary;
+  assert.deepStrictEqual(s.shipped, ['00D-query-kit'], JSON.stringify(s));
+  const be = r.calls.plan.filter((k) => k.startsWith('backend:00D')); assert.strictEqual(be.length, 2, be.join()); assert(r.calls.reasons); pass('rejected brace path was explained and fixed in one revision');
+}
+
 console.log(`\nSCRUM_SIM_OK (${ok} checks)`);

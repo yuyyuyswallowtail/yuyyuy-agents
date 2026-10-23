@@ -8,7 +8,7 @@
 const SC_ROLES = ['database', 'backend', 'uiux', 'frontend', 'qa'];
 const SC_IMPL_ORDER = ['database', 'uiux', 'backend', 'frontend', 'qa']; // batches writers: llama, llama, qwen, qwen, llama
 const SC_WRITER = { database: 'llama', backend: 'qwen', uiux: 'llama', frontend: 'qwen', qa: 'llama' };
-const SC_TOK = { plan: 6000, fix: 4000, gate: 1800, final: 1800, kick: 800, retro: 800 };
+const SC_TOK = { plan: 6000, fix: 6000, gate: 1800, final: 1800, kick: 800, retro: 800 };
 const SC_LIM = { peers: 4500, facts: 3000, md: 1800, tool: 900, sum: 2600 };
 const SC_ROLE_CHECK = { uiux: [['Purpose', []], ['Components', []], ['States', []], ['Accessibility', []]] };
 
@@ -150,7 +150,7 @@ function scPlanSystem(S, part) {
 function scPlanUser(S, part) {
   const sc = S.sc; const sp = sc.sp; const cur = sc.cur; const fb = sc.fb[part.role];
   const ask = !cur.md
-    ? `TASK: Write the plan for this part. MD under 450 words. At most 5 tasks, at most 3 files per task.\nRequired headings:\n${scReqList(part)}\n\nReply with sections MD, TASKS, CODER, MEMORY (add GAP only if a rule is missing). If you are not SURE of an API, reply FIRST with only <<<PROBE>>>.`
+    ? `TASK: Write the plan for this part. MD under 450 words. At most 5 tasks, at most 3 files per task. Every entry in 'files' must be ONE concrete file path (example: ${S.cfg.root}/app/Models/User.php): never a directory, never braces {}, never wildcards.\nRequired headings:\n${scReqList(part)}\n\nReply with sections MD, TASKS, CODER, MEMORY (add GAP only if a rule is missing). If you are not SURE of an API, reply FIRST with only <<<PROBE>>>.`
     : `Your plan is incomplete. Reply with ONLY the sections needed to fix these gaps (MD: only the missing headings, do not repeat finished parts; TASKS: the full JSON array):\n${sc.missing.map((m) => '- ' + m).join('\n')}`;
   const facts = sc.facts[part.key] ? `\nVERIFIED FACTS (answers to your probes; they win over your memory):\n${sc.facts[part.key]}\n` : '';
   return `SPRINT ${sp.id} - ${sp.title} (plan iteration ${sc.iter} of ${scCfg(S).maxPlan})\n${scKickText(S)}\n\nYOUR PART: ${part.key} - ${part.title}\nBRIEF: ${part.brief}\nACCEPTANCE CRITERIA FOR ${part.role}:\n${scCriteria(S, part.role)}\n`
@@ -438,13 +438,15 @@ function scrumAbsorb(S, text, err) {
       }
       const md = pick(secs, 'MD');
       if (md) cur.md = cur.md && sc.revs > 0 ? mergeMd(cur.md, unfence(md), sc.missing) : cleanMd(unfence(md));
-      let arr = null; try { arr = JSON.parse(unfence(pick(secs, 'TASKS') || '')); } catch (e) { arr = null; }
-      const tasks = validateTasks(arr, root, part.role, part.slice);
+      const why = []; const tb = pick(secs, 'TASKS'); let arr = null;
+      if (tb == null) why.push('TASKS section is missing: add a <<<TASKS>>> header line followed by the JSON array');
+      else { try { arr = JSON.parse(unfence(tb)); } catch (e) { why.push('TASKS is not valid JSON (' + e.message + ')'); } }
+      const tasks = arr == null ? null : validateTasks(arr, root, part.role, part.slice, why);
       if (tasks) cur.tasks = tasks;
       cur.coder = pick(secs, 'CODER') || cur.coder; cur.memo = pick(secs, 'MEMORY') || cur.memo;
       scLines(pick(secs, 'GAP')).forEach((g) => { const line = `${part.key}: ${g}`; if (!sc.gaps.includes(line) && sc.gaps.length < 12) sc.gaps.push(line); });
       const missing = cur.md ? coverage(cur.md, scCheckOf(part)) : ['MD section is missing or the reply was truncated'];
-      if (!cur.tasks) missing.push(`TASKS must be a valid JSON array of at most 5 tasks, absolute file paths inside ${root}, only in: ${LAYER_HELP[part.role]}`);
+      if (!cur.tasks) missing.push(`TASKS must be a valid JSON array of at most 5 tasks, absolute file paths inside ${root}, only in: ${LAYER_HELP[part.role]}` + (why.length ? `\nWhy your previous TASKS was rejected:\n- ${why.slice(0, 6).join('\n- ')}` : ''));
       const claimed = scClaimed(S, part); const conflicts = [];
       if (cur.tasks) cur.tasks.forEach((t) => t.files.forEach((f) => { if (claimed[f]) conflicts.push(`${f} (owned by ${claimed[f]})`); }));
       conflicts.forEach((c) => missing.push(`file already owned by a peer part, remove it or use "reads": ${c}`));
