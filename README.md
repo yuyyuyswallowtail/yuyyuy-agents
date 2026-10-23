@@ -42,7 +42,9 @@ Urutan kebenaran: VERIFIED FACTS > SKILLS (Boost) > DEPS + `scope/rules/` > inga
 4. Pastikan `sqlite3`, `php`, `git` ada di tempat node Exec berjalan; jalankan sekali `bash bin/mem.sh migrate`.
 5. `python3 sync-engine.py` lalu import workflow (atau `apply-v2.py` untuk workflow gabungan), lalu `apply-proxy.py` agar node memakai port proxy.
 
-Port: DeepSeek 9999 (proxy 9899), Qwen 9998 (9898), Meta-Llama 9996 (9897), Ministral 9997 (tanpa proxy).
+Port: DeepSeek 9999 (proxy 9899), Qwen 9998 (9898), Meta-Llama 9996 (9897), Gemma 3 vision 9995 (9896), Ministral 9997 (tanpa proxy).
+
+Context (`-c`) di skrip run: DeepSeek 65536, Qwen2.5-Coder 65536, Meta-Llama 49152, Ministral 49152, Gemma 3 16384. Ubah lewat variabel `CTX` atau baris `CTX="${CTX:-...}"` di skrip.
 
 ## Gerbang QA (diperluas)
 
@@ -65,6 +67,10 @@ Selain itu perencana backend/frontend wajib menyertakan satu task tes (`requireT
 bash bin/e2e-scaffold.sh /workspace/yuyyuy-admin-web --install   # sekali per proyek; tidak menimpa file yang ada
 ```
 Menambah `playwright.config.ts`, `tests/e2e/` (fixtures, global-setup, `rbac.spec.ts`, `access-matrix.json`) dan `database/seeders/E2eUsersSeeder.php`: satu user per role Spatie (`e2e-<role>@example.test`, hanya di local/testing) dengan database SQLite terpisah (`database/e2e.sqlite`). Sprint `08-e2e-playwright` meminta agen qa melengkapi matriks akses (semua route x semua role + tamu) dan alur utama per role. Tangkapan layar tersimpan di `storage/e2e-screens/` untuk ditinjau (nanti oleh model vision).
+
+## Review visual (Gemma 3)
+
+Model ke-5, `gemma-3-4b-it` + `mmproj` (`llm-scripts/run-gemma3-9995.sh`, unit `llama-gemma3.service`), ikut bergantian lewat proxy (satu model berat pada satu waktu). Setelah bukti QA, bila ada tangkapan layar Playwright dari 6 jam terakhir (`storage/e2e-screens/*.jpg|png`, maks. 3, file di atas 450 KB dilewati), `bin/shots.php` mengirimnya ke Gemma bersama spesifikasi desain sprint; temuannya (`ISSUE <file>: ...`) menjadi blok `vision` yang bersifat saran untuk PM FINAL. Tanpa tangkapan layar, Gemma tidak pernah dimuat. Matikan dengan `"vision": false` di Config.
 
 ## Tes
 

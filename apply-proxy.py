@@ -4,7 +4,7 @@ import json, sys
 src, dst = sys.argv[1:3]
 wf = json.load(open(src))
 wf = wf[0] if isinstance(wf, list) else wf
-MAP = {"DeepSeek Planner": (":9999/", ":9899/"), "Qwen Coder": (":9998/", ":9898/"), "Meta-Llama": (":9996/", ":9897/")}
+MAP = {"DeepSeek Planner": (":9999/", ":9899/"), "Qwen Coder": (":9998/", ":9898/"), "Meta-Llama": (":9996/", ":9897/"), "Gemma Vision": (":9995/", ":9896/")}
 hit = []
 for n in wf["nodes"]:
     if n["name"] in MAP:

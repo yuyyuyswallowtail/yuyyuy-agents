@@ -1,7 +1,7 @@
 /* ===== yuyyuy agent engine v2.1 (embedded in the n8n Config, Router, Absorb and Done Code nodes) ===== */
 const LIM = { scope: 5200, snap: 3000, skills: 7500, memo: 1800, md: 6500, file: 2500, files: 7000, checks: 2200, brief: 1500, reads: 4000, deps: 3500 };
 const TOK = { docs: 6000, fix: 4000, code: 3500, qa: 1800, brief: 300, record: 160 };
-const LLM_ACTIONS = ['deepseek', 'qwen', 'ministral', 'llama'];
+const LLM_ACTIONS = ['deepseek', 'qwen', 'ministral', 'llama', 'gemma'];
 const DEFAULT_CHECK = [['Files Per Layer', []], ['Contracts', []], ['Edge Cases', []], ['Test Plan', []]];
 const BASE_OWNED = ['routes/web.php', 'app/Providers/RepositoryServiceProvider.php', 'database/seeders/DatabaseSeeder.php', 'bootstrap/providers.php', 'bootstrap/app.php'];
 const BAD_PATHS = /^app\/(Exceptions\/Handler|Http\/Kernel)\.php$/;

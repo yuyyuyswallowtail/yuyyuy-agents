@@ -1,5 +1,5 @@
 [Unit]
-Description=llama.cpp on-demand model switcher (deepseek :9899, qwen-coder :9898)
+Description=llama.cpp on-demand model switcher (deepseek :9899, qwen-coder :9898, meta-llama :9897, gemma3 :9896)
 
 [Service]
 Type=simple

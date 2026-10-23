@@ -45,7 +45,7 @@ TAIL = {
 }
 for name, tail in TAIL.items():
     nodes[name]["parameters"]["jsCode"] = engine + "\n\n" + tail
-for name in ("DeepSeek Planner", "Qwen Coder", "Ministral Memory", wfkit.LLAMA):
+for name in ("DeepSeek Planner", "Qwen Coder", "Ministral Memory", wfkit.LLAMA, wfkit.GEMMA):
     if name in nodes:
         nodes[name]["parameters"].setdefault("options", {})["timeout"] = 5400000
 

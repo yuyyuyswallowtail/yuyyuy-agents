@@ -5,7 +5,7 @@ set -euo pipefail
 LLAMA_SERVER="${LLAMA_SERVER:-$HOME/LLM/llama.cpp/build/bin/llama-server}"
 MODEL="${MODEL:-$HOME/.lmstudio/models/lmstudio-community/Meta-Llama-3.1-8B-Instruct-GGUF/Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf}"
 
-CTX="${CTX:-65536}"
+CTX="${CTX:-49152}"
 PORT="${PORT:-9996}"
 KV_TYPE="${KV_TYPE:-q4_0}"
 # The GGUF's own template made Llama 3.1 answer plain prompts with tool-call JSON, and in recent llama.cpp
