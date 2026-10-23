@@ -63,16 +63,22 @@ function readOk(f, root) {
     && !/(^|\/)\.env/.test(f) && !/\/(vendor|node_modules|\.git)\//.test(f);
 }
 
-function validateTasks(tasks, root, agent, sliceId) {
-  if (!Array.isArray(tasks) || !tasks.length) return null;
+function validateTasks(tasks, root, agent, sliceId, why) {
+  why = why || [];
+  if (!Array.isArray(tasks) || !tasks.length) { why.push('TASKS must be a non-empty JSON array of task objects'); return null; }
   const out = [];
   tasks.slice(0, 6).forEach((t, i) => {
-    if (!t || typeof t !== 'object') return;
-    const files = (Array.isArray(t.files) ? t.files : []).filter((f) => pathOk(f, root, agent, sliceId)).slice(0, 3);
+    const tid = (t && t.id) || 't' + (i + 1);
+    if (!t || typeof t !== 'object') { why.push(`task ${tid}: not an object`); return; }
+    const rawFiles = Array.isArray(t.files) ? t.files : [];
+    const files = rawFiles.filter((f) => pathOk(f, root, agent, sliceId)).slice(0, 3);
+    rawFiles.filter((f) => !pathOk(f, root, agent, sliceId)).slice(0, 3).forEach((f) => why.push(`task ${tid}: rejected file ${JSON.stringify(f)} (need ONE concrete absolute file path under ${root}/ inside the allowed layers; no directories, no {} or * or .. ; the {A,B} notation in ALLOWED PATHS is shorthand, not a path)`));
+    if (!rawFiles.length) why.push(`task ${tid}: 'files' is missing or empty`);
     let reads = (Array.isArray(t.reads) ? t.reads : []).filter((f) => readOk(f, root)).slice(0, 3);
     files.forEach((f) => { if (BASE_OWNED.includes(f.slice(root.length + 1)) && !reads.includes(f)) reads.unshift(f); });
     reads = reads.slice(0, 3);
     const checks = (Array.isArray(t.checks) ? t.checks : []).filter((c) => typeof c === 'string').slice(0, 6);
+    if (!t.instruction) why.push(`task ${tid}: 'instruction' is missing`);
     if (!t.instruction || !files.length) return;
     out.push({ id: String(t.id || 't' + (i + 1)).replace(/[^A-Za-z0-9._-]/g, '-'), title: String(t.title || t.id || 'task'), files, reads, instruction: String(t.instruction), checks });
   });
@@ -194,7 +200,7 @@ function route(S) {
 
       case 'plan_docs':
         S.action = 'deepseek';
-        S.req = chat(plannerSystem(S), `${sliceHeader(S)}\n\nTASK: Write the specification for this feature and the executor task list. MD under 450 words. At most 5 tasks, at most 3 files per task.\nRequired headings:\n${requiredList(S)}\n\nReply with sections MD, TASKS, CODER, MEMORY.`, TOK.docs, 0.6);
+        S.req = chat(plannerSystem(S), `${sliceHeader(S)}\n\nTASK: Write the specification for this feature and the executor task list. MD under 450 words. At most 5 tasks, at most 3 files per task. Every entry in 'files' must be ONE concrete file path (example: ${S.cfg.root}/app/Models/User.php): never a directory, never braces {}, never wildcards.\nRequired headings:\n${requiredList(S)}\n\nReply with sections MD, TASKS, CODER, MEMORY.`, TOK.docs, 0.6);
         return S;
 
       case 'revise': {
@@ -354,12 +360,17 @@ function absorb(S, raw) {
       const secs = sections(text);
       const md = pick(secs, 'MD');
       if (md) S.md = (S.step === 'revise' && !S.reviseFull && S.md) ? S.md + '\n\n' + unfence(md) : unfence(md);
-      const tasks = validateTasks((() => { try { return JSON.parse(unfence(pick(secs, 'TASKS') || '')); } catch (e) { return null; } })(), S.cfg.root, S.agent, sl.id);
+      const why = [];
+      const tb = pick(secs, 'TASKS');
+      let rawT = null;
+      if (tb == null) why.push('TASKS section is missing: add a <<<TASKS>>> header line followed by the JSON array');
+      else { try { rawT = JSON.parse(unfence(tb)); } catch (e) { why.push('TASKS is not valid JSON (' + e.message + ')'); } }
+      const tasks = rawT == null ? null : validateTasks(rawT, S.cfg.root, S.agent, sl.id, why);
       if (tasks) S.tasks = tasks;
       S.coder = pick(secs, 'CODER') || S.coder;
       S.memo = pick(secs, 'MEMORY') || S.memo || '';
       const missing = S.md ? coverage(S.md, checkOf(sl)) : ['MD section is missing or the reply was truncated'];
-      if (!S.tasks) missing.push(`TASKS must be a valid JSON array of at most 5 tasks, absolute file paths inside ${S.cfg.root}, only in: ${LAYER_HELP[S.agent]}`);
+      if (!S.tasks) missing.push(`TASKS must be a valid JSON array of at most 5 tasks, absolute file paths inside ${S.cfg.root}, only in: ${LAYER_HELP[S.agent]}` + (why.length ? `\nWhy your previous TASKS was rejected:\n- ${why.slice(0, 6).join('\n- ')}` : ''));
       S.missing = missing;
       if (missing.length && S.revs < S.cfg.maxRev) { S.revs++; S.step = 'revise'; return S; }
       if (!S.md) {
